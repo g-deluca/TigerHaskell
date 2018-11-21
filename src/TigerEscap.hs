@@ -192,7 +192,8 @@ instance Escapator Mini where
     old <- get
     put (old{lvl = lvl old + 1})
     m' <- m
-    put old
+    -- put old
+    ST.modify (\ (S _ env) -> S (lvl old) env)
     return m'
   update name esc = do
     est <- get
@@ -203,7 +204,10 @@ instance Escapator Mini where
     old <- get
     put old{env = M.insert name (lvl old, esc) (env old)}
     m' <- m
-    put old
+    new <- get
+    if (M.member name (env old))
+      then put (new{env = M.insert name ((env old) M.! name) (env new)})
+      else put (new{env = M.delete name (env new)})
     return m'
   printEnv = get >>=  \env -> traceM $ "PrintEnv " ++ (show env)
 
