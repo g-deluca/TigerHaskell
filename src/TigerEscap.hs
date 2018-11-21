@@ -179,9 +179,6 @@ type Mini = ExceptT Symbol (ST.State Estado)
 addMsg :: SEstado -> String -> SEstado
 addMsg e msg = e{msgP = msg : msgP e}
 
-addMsgM :: String -> Stepper ()
-addMsgM str = ST.modify (`addMsg` str)
-
 instance Demon Mini where
   derror = throwE
   adder w s = catchE w (throwE . flip append s)
@@ -216,53 +213,3 @@ initSt = S 1 M.empty
 
 calcularEEsc :: Exp -> Either Symbol Exp
 calcularEEsc e = ST.evalState (runExceptT (travExp e)) initSt
-
--- La implementacion de Stepper es lo mismo, pero vamos a ir guardando en
--- una lista los diferentes entornos usados.
-
-type Stepper = ExceptT Symbol (ST.State SEstado)
-
-instance Demon Stepper where
-  derror = throwE
-  adder w s = catchE w (throwE . flip append s)
-
-instance Escapator Stepper where
-  -- Las operaciones de manejo de niveles no modifican el
-  -- entorno, así que no hacemos nada.
-  depth = get >>= return . lvlP
-  up m = do
-    old <- get
-    put (old{lvlP = lvlP old + 1})
-    m' <- m
-    -- Mantenemos los mensajes que ya reportamos...
-    msg <- ST.gets msgP
-    put old{msgP = msg}
-    return m'
-  -- Las operaciones que sí modifican el entorno son [update] e [insert]
-  update name esc = do
-    addMsgM ("Update de la variable " ++ unpack name)
-    est <- get
-    (lvl, _) <- maybe (notfound name) return (M.lookup name (envP est))
-    ST.modify (\(Step l env msg) -> Step  l (M.insert name (lvl, esc) env) msg)
-  lookup name = get >>= return . M.lookup name . envP
-  insert name esc m = do
-    addMsgM ("Agregamos la variable " ++ unpack name)
-    old <- get
-    put old{envP = M.insert name (lvlP old, esc) (envP old)}
-    m' <- m
-    -- Mantenemos los mensajes que ya reportamos...
-    msg <- ST.gets msgP
-    put old{msgP = msg}
-    return m'
-  printEnv = get >>=  \env -> traceM $ "PrintEnv " ++ (show env)
-
-initStepper :: SEstado
-initStepper = Step 1 M.empty []
-
--- Ahora vamos a tener una función donde además
--- obtendremos toda la progresiones de los diferentes entorno!
-
-calcularEscStepper :: Exp -> Either Symbol (Exp, (Env, [String]))
-calcularEscStepper exp =
-  let (e , es) = ST.runState (runExceptT (travExp exp)) initStepper
-  in (\ res -> (res , ( envP es, msgP es ))) <$> e
