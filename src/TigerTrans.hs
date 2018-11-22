@@ -69,7 +69,7 @@ seq [s     ] = s
 seq (x : xs) = Seq x (seq xs)
 
 -- | Eventualmente vamos a querer obtener nuevamente las expresiones
--- empaquetas por este nuevo tipo [BExp]. Para eso damos las siguientes
+-- empaquetadas por este nuevo tipo [BExp]. Para eso damos las siguientes
 -- funciones des-empaquetadoras. Definidas en [7.3] del libro.
 
 -- | Des-empaquetador de expresiones
@@ -104,7 +104,7 @@ unNx (Cx cf) = do
 
 -- | Des-empaquetador de condiciones
 unCx :: (Monad w, TLGenerator w, Demon w) => BExp -> w ((Label, Label) -> Stm)
-unCx (Nx s        ) = internal $ pack "unCx(Nx...)"
+unCx (Nx _        ) = internal $ pack "unCx(Nx...)"
 unCx (Cx cf       ) = return cf
 -- Pequeña optimización boluda
 unCx (Ex (Const 0)) = return (\(_, f) -> Jump (Name f) f)
@@ -247,6 +247,8 @@ instance (MemM w) => IrGen w where
         let res = Proc bd' (getFrame lvl)
         pushFrag res
     stringExp t = do
+      -- | Esto debería ser dependiente de la arquitectura...
+      -- No estoy seguro que tenga que estar esto acá.
         l <- newLabel
         let ln = T.append (pack ".long ")  (pack $ show $ T.length t)
         let str = T.append (T.append (pack ".string \"") t) (pack "\"")
@@ -297,7 +299,10 @@ instance (MemM w) => IrGen w where
     -- callExp :: Label -> Externa -> Bool -> Level -> [BExp] -> w BExp
     callExp name external isproc lvl args = P.error "COMPLETAR"
     -- letExp :: [BExp] -> BExp -> w BExp
-    letExp [] e = do -- Puede parecer al dope, pero no...
+    letExp [] e = do
+      -- Des-empaquetar y empaquetar como un |Ex| puede generar
+      -- la creación de nuevo temporales, etc. Es decir, hay efectos que necesitamos contemplar.
+      -- Ver la def de |unEx|
             e' <- unEx e
             return $ Ex e'
     letExp bs body = do
@@ -309,9 +314,7 @@ instance (MemM w) => IrGen w where
     breakExp = P.error "COMPLETAR"
     -- seqExp :: [BExp] -> w BExp
     seqExp [] = return $ Nx $ ExpS $ Const 0
-    seqExp bes = do
-        let ret = last bes
-        case ret of
+    seqExp bes = case last bes of
             Nx _ -> Nx . seq <$> mapM unNx bes
             Ex e' -> do
                     let bfront = init bes
