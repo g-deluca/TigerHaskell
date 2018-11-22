@@ -1,4 +1,4 @@
-{-# Language UndecidableInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 module TigerTrans where
 
 import qualified Control.Monad.State           as ST
@@ -11,6 +11,7 @@ import           Prelude                 hiding ( EQ
                                                 )
 import qualified Prelude                       as P
                                                 ( error )
+import           TigerAbs                       ( Escapa(..) )
 import qualified TigerAbs                      as Abs
 import           TigerErrores
 import           TigerFrame                    as F
@@ -128,7 +129,7 @@ setFrame :: Frame -> Level -> Level
 setFrame f (MkLI _ l : xs) = MkLI f l : xs
 setFrame _ _               = P.error "setFrame"
 
-newLevel :: Level -> Symbol -> [Bool] -> Level
+newLevel :: Level -> Symbol -> [Escapa] -> Level
 newLevel []                  s bs = [MkLI (newFrame s bs) 0]
 newLevel ls@(MkLI _ lvl : _) s bs = MkLI (newFrame s bs) (lvl + 1) : ls
 
@@ -167,7 +168,7 @@ class (Monad w, TLGenerator w, Demon w) => MemM w where
     -- Esto básicamente debería aumentar en uno la cantidad de variables locales
     -- usadas. Es lo que se usará eventualmente para toquetear el stack o lo que
     -- sea que use la arquitectura deseada.
-    allocLocal :: Bool -> w Access
+    allocLocal :: Escapa -> w Access
     allocLocal b = do
       -- | Dame el nivel actual
         t <- topLevel
@@ -183,7 +184,7 @@ class (Monad w, TLGenerator w, Demon w) => MemM w where
         return  acc
     -- | Manejo de /pedido/ de memoria para argumentos.
     -- ver lo que hicimos en /allocLocal/
-    allocArg :: Bool -> w Access
+    allocArg :: Escapa -> w Access
     allocArg b = do
         t <- topLevel
         popLevel
