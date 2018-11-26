@@ -19,6 +19,10 @@ import           Debug.Trace
 import           System.Exit
 
 
+----------------------------------------------------------------------
+------ Requiere que todos los argumentos sean pasados por stack ------
+----------------------------------------------------------------------
+
 ----------------------------------------
 -- Manejo de llamadas externas
 ----------------------------------------
@@ -41,17 +45,16 @@ extCall l = or $ fmap
 -- label | mblab : Label | hace referencias y la concatenamos en
 -- output (que sería la salida estandard)
 printExec :: Int -> RC (Either CPU Int)
-printExec i = do --trace ("Llamada a print con argumento: " ++ show i) $ do
+printExec i = do
   env <- get
   let mblab = wat env !! i
-  -- let mbstr = dat env !! getStr mblab
   put (env { output = output env ++ [getStr mblab] })
   return $ Right 1
 
 maxAddr :: RC Int
 maxAddr = do
   wats <- gets wat
-  return $ max memSep (L.maximum (M.keys wats) + wSz)
+  return $ max 0 (L.maximum (M.keys wats) + wSz)
 
 stringCompare :: Int -> Int -> RC (Either CPU Int)
 stringCompare a1 a2 = do
@@ -92,7 +95,7 @@ initArray size init = do
 checkIndexArray :: Int -> Int -> RC (Either CPU Int)
 checkIndexArray a i = do
   wats   <- gets wat
-  cur_fl <- gets (head . funcStack)
+  cur_fl <- gets (name . head . frameStack)
   cpu    <- get
   if i < 0 || i >= getInt (wats !! (a - wSz))
     then trace ("Indice excedido:" ++ show a ++ " " ++ show i) return (Left cpu)
@@ -190,24 +193,24 @@ step (Move dst src) = do
 step (ExpS e  ) = iexp e >> return []
 -- El |Jump| queda sencillo, es simplemente búscar el código a ejecutar, y devolverlo.
 step (Jump _ l) = do
-  current_flbl <- gets (head . funcStack)
+  current_flbl <- gets (name . head . frameStack)
   dats         <- gets dat
   wats         <- gets wat
-  let addr      = dats !! current_flbl
-  let current_f = wats !! addr
-  let cf_bdy    = snd (getFBody current_f)
+  let addr           = dats !! current_flbl
+  let current_f      = wats !! addr
+  let (_, cf_bdy, _) = getFBody current_f
   return $ findLabel cf_bdy l
 -- |CJump| es un jump condicional, no creo que lo usen pero es fácil de implementar.
 step (CJump bop x y tt ff) = do
   x' <- iexp x
   y' <- iexp y
   let dest = if compares bop x' y' then tt else ff
-  current_flbl <- gets (head . funcStack)
+  current_flbl <- gets (name . head . frameStack)
   dats         <- gets dat
   wats         <- gets wat
-  let addr      = dats !! current_flbl
-  let current_f = wats !! addr
-  let cf_bdy    = snd (getFBody current_f)
+  let addr           = dats !! current_flbl
+  let current_f      = wats !! addr
+  let (_, cf_bdy, _) = getFBody current_f
   return $ findLabel cf_bdy dest
 
 findLabel :: [Stm] -> Label -> [Stm]
@@ -252,21 +255,23 @@ iexp (Call (Name f) es) = do
       return $ either (error "Error") id rM
     else do
     -- Buscamos la info de |f| cargada en la CPU. Esto nos da un |acc| y el |body|.
-      let (acc, body) = getFBody $ getDat f cpu
+      let (acc, body, fr) = getFBody $ getDat f cpu
       -- Deberíamos preparar bien la info de los argumentos, los access de estos
       -- con los argumentos reales que están en |es'|.
       let mvsPreArgs =
             zipWith (\a i -> Move (TigerFrame.exp a 0) (Const i)) acc es'
       let collisions = getCollisions body cpu
 
+      lcls <- parentLocals
       -- Solo los argumentos van a stack, por eso sumo nArgs * wSz
-      let mvFP =
-            Move (Temp fp) (Binop Plus (Temp fp) (Const (L.length acc * wSz)))
-      put cpu { funcStack = f : funcStack cpu }
+      let mvFP = Move
+            (Temp fp)
+            (Binop Minus (Temp fp) (Const ((L.length acc + lcls) * wSz)))
+      put cpu { frameStack = fr : frameStack cpu }
 
       interactive (mvFP : mvsPreArgs ++ body)
 
-      modify (\c -> c { funcStack = tail (funcStack c) })
+      modify (\c -> c { frameStack = tail (frameStack c) })
       cpu' <- get
       restore collisions
       -- Buscar el resultado en rv y devolverlo.
@@ -275,6 +280,13 @@ iexp (Call (Name f) es) = do
 iexp (Call _ _) = error "Puede pasar?"
 -- | |Eseq| es la ejecución secuencial de los pasos.
 iexp (Eseq s e) = step s >> iexp e
+
+parentLocals :: RC Int
+parentLocals = do
+  frames <- gets frameStack
+  case frames of
+    []      -> error "No tiene padre"
+    (f : _) -> return $ L.length (locals f)
 
 
 getCollisions :: [Stm] -> CPU -> [(Temp, Int)]
@@ -291,10 +303,6 @@ getCollisions stms cpu =
   getTemps (Seq s1 s2 : stms) = getTemps $ s1 : s2 : stms
   getTemps (_         : stms) = getTemps stms
 
--- restore :: ([(Temp, Int)], [Stm]) -> [Stm]
--- restore (tmps, stms) =
---   let moves = L.map (\(t, i) -> Move (Temp t) (Const i)) tmps in moves ++ stms
-
 restore :: [(Temp, Int)] -> RC ()
 restore colls = do
   cpu <- get
@@ -307,7 +315,7 @@ restore colls = do
 -- | Estado inicial de la CPU.
 -- fp, sp, rv = 0.
 emptyCPU :: CPU
-emptyCPU = CPU M.empty M.empty M.empty [] [] [pack "_main"] True
+emptyCPU = CPU M.empty M.empty M.empty [] [] [] True
 
 -- | Función que búsca los posibles labels dentro de una sequencia de stms.
 splitStms
@@ -336,7 +344,7 @@ splitLbls (t       : ts) (l, rs) = splitLbls ts (l, t : rs)
 newDir :: State Int Int
 newDir = do
   i <- get
-  put (i + 1)
+  put (i - 1)
   return i
 
 loadLabels :: [(Label, Symbol)] -> State Int CPU -> State Int CPU
@@ -357,7 +365,7 @@ loadLabCod ((lbl, cod) : res) cpu = do
   dir <- newDir
   loadLabCod res $ return
     (st' { dat = M.insert lbl dir (dat st')
-         , wat = M.insert dir (FBody ([], cod)) (wat st')
+         , wat = M.insert dir (FBody ([], cod, defaultFrame)) (wat st')
          }
     )
 
@@ -370,16 +378,17 @@ loadProcs ((fr, fbody) : procs) cpu = do
   cpu' <- cpu
   loadProcs procs $ return
     (cpu' { dat = M.insert fname fdir (dat cpu')
-          , wat = M.insert fdir (FBody (prepFormals fr, fbody)) (wat cpu')
+          , wat = M.insert fdir (FBody (prepFormals fr, fbody, fr)) (wat cpu')
           }
     )
 
-loadMain :: [Stm] -> State Int CPU -> State Int CPU
-loadMain tmain s = do
+loadMain :: [Stm] -> Frame -> State Int CPU -> State Int CPU
+loadMain tmain fr s = do
   cpu  <- s
   fdir <- newDir
-  return $ cpu { dat = M.insert (pack "_main") fdir (dat cpu)
-               , wat = M.insert fdir (FBody ([], tmain)) (wat cpu)
+  return $ cpu { dat = M.insert (pack "0.0._tigermain") fdir (dat cpu)
+               , wat = M.insert fdir (FBody ([], tmain, defaultFrame)) (wat cpu)
+               , frameStack = [fr]
                }
 
 ----------------------------------------
@@ -392,18 +401,13 @@ startInteractive
         -- | Strings.
   -> [(Label, Symbol)]
         -- | Básicamente el main.
-  -> [Stm]
+  -> ([Stm], Frame)
   -> IO ()
-startInteractive fs ss tmain =
+startInteractive fs ss (tmain, mainFr) =
   let (factMain, rests) = splitStms tmain
       (cpuInit', me   ) = runState
-        ( loadMain tmain
-        $ loadProcs fs
-        $ loadLabels ss
-        $ loadLabCod rests
-        $ return emptyCPU
-        )
-        0
+        (loadMain tmain mainFr $ loadProcs fs $ loadLabels ss $ return emptyCPU)
+        memSize
       cpuInit   = uTemp rv me $ uTemp fp me $ uTemp sp me cpuInit'
       factMain' = if null factMain then snd $ head rests else factMain
   in  evalStateT (interactive factMain') cpuInit
@@ -412,7 +416,7 @@ startInteractive fs ss tmain =
 interactive :: [Stm] -> RC ()
 interactive [] = do
   cpu <- get
-  case funcStack cpu of
+  case frameStack cpu of
     [f] -> liftIO $ putStrLn (printCpu cpu)
     _   -> return ()
 interactive s@(stm : stms) = do

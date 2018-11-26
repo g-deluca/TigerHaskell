@@ -27,7 +27,7 @@ import           TigerPrettyIr
 
 prettyDato (TI.Str s) = text $ unpack s
 prettyDato (DInt   i) = int i
-prettyDato (FBody (accs, stms)) =
+prettyDato (FBody (accs, stms, _)) =
   hang (text "Function:") tabWidth
     $   text "Args:"
     <+> hsep (punctuate comma (prettyAccess <$> accs))
@@ -42,7 +42,9 @@ prettyMem m =
 
 prettyWat :: M.Map Int Dato -> Doc
 prettyWat m =
-  vcat $ (\(i, d) -> int i <+> text "->" <+> prettyDato d) <$> M.toList m
+  vcat
+    $   (\(i, d) -> int i <+> text "->" <+> prettyDato d)
+    <$> (L.reverse $ M.toList m)
 
 prettyDat :: M.Map Label Int -> Doc
 prettyDat m =

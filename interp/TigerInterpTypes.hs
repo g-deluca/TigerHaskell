@@ -21,7 +21,8 @@ data Dato
         -- | Lista de acceso de los posibles argumentos.
         [Access]
         -- | Body de la función.
-        , [Stm])
+        , [Stm]
+        , Frame)
     -- | O puedo almacenar un entero.
     | DInt Int
     deriving (Show)
@@ -29,7 +30,7 @@ data Dato
 -- | Funcinoes auxiliares de proyección con errores significativos
 getInt :: Dato -> Int
 getStr :: Dato -> Symbol
-getFBody :: Dato -> ([Access], [Stm])
+getFBody :: Dato -> ([Access], [Stm], Frame)
 
 getInt (DInt i) = i
 getInt _        = error "NOT AN INT"
@@ -52,7 +53,7 @@ data CPU = CPU
       -- | Buffer de entrada, de donde sacamos la entrada cuando thacemos getchar.
     , input  :: [Symbol]
       -- | Stack de nombre de funciones, en el tope esta la actual
-    , funcStack :: [Label]
+    , frameStack :: [Frame]
     , inter :: Bool
     }
     deriving Show
@@ -63,8 +64,8 @@ getDat l cpu = wat cpu !! (dat cpu !! l)
 uTemp :: Temp -> Int -> CPU -> CPU
 uTemp t i cpu = cpu { mem = M.insert t i (mem cpu) }
 
-memSep :: Int
-memSep = 1024
+memSize :: Int
+memSize = 2048
 
 unstring :: String -> String
 unstring s@('.' : _) = L.init $ L.drop 9 s
