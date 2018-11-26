@@ -51,10 +51,12 @@ printExec i = do
   put (env { output = output env ++ [getStr mblab] })
   return $ Right 1
 
-maxAddr :: RC Int
-maxAddr = do
-  wats <- gets wat
-  return $ max 0 (L.maximum (M.keys wats) + wSz)
+newHeapAddr :: RC Int
+newHeapAddr = do
+  cpu <- get
+  let addr = maxHeap cpu
+  put cpu { maxHeap = addr + wSz }
+  return addr
 
 stringCompare :: Int -> Int -> RC (Either CPU Int)
 stringCompare a1 a2 = do
@@ -68,7 +70,7 @@ stringCompare a1 a2 = do
 
 allocRecord :: [Int] -> RC (Either CPU Int)
 allocRecord (ctos : inits) = do
-  addr <- maxAddr
+  addr <- newHeapAddr
   cpu  <- get
   let
     new_wat = M.union
@@ -76,12 +78,15 @@ allocRecord (ctos : inits) = do
       ( M.fromList
       $ L.zipWith (\i v -> (addr + wSz * i, DInt v)) [0 .. (ctos - 1)] inits
       )
-  put cpu { wat = new_wat, mem = M.insert rv addr (mem cpu) }
+  put cpu { wat     = new_wat
+          , mem     = M.insert rv addr (mem cpu)
+          , maxHeap = addr + wSz * ctos
+          }
   return $ Right addr
 
 initArray :: Int -> Int -> RC (Either CPU Int)
 initArray size init = do
-  addr <- maxAddr
+  addr <- newHeapAddr
   cpu  <- get
   let new_wat = M.union
         (wat cpu)
@@ -89,7 +94,10 @@ initArray size init = do
           (\i -> (addr + wSz + wSz * i, DInt init))
           [0 .. (size - 1)]
         )
-  put cpu { wat = new_wat, mem = M.insert rv (addr + wSz) (mem cpu) }
+  put cpu { wat     = new_wat
+          , mem     = M.insert rv (addr + wSz) (mem cpu)
+          , maxHeap = addr + wSz * (size + 1)
+          }
   return $ Right (addr + wSz)
 
 checkIndexArray :: Int -> Int -> RC (Either CPU Int)
@@ -315,7 +323,7 @@ restore colls = do
 -- | Estado inicial de la CPU.
 -- fp, sp, rv = 0.
 emptyCPU :: CPU
-emptyCPU = CPU M.empty M.empty M.empty [] [] [] True
+emptyCPU = CPU M.empty M.empty M.empty [] [] [] True 0
 
 -- | Función que búsca los posibles labels dentro de una sequencia de stms.
 splitStms

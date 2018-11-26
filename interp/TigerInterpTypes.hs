@@ -55,6 +55,7 @@ data CPU = CPU
       -- | Stack de nombre de funciones, en el tope esta la actual
     , frameStack :: [Frame]
     , inter :: Bool
+    , maxHeap :: Int
     }
     deriving Show
 
