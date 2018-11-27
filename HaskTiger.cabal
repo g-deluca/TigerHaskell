@@ -127,6 +127,7 @@ test-suite Interp
                      , directory
                      , ansi-terminal
                      , containers
+                     , cond
                      , HaskTiger
   other-modules: Tools
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N

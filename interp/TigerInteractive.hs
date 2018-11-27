@@ -325,6 +325,9 @@ restore colls = do
 emptyCPU :: CPU
 emptyCPU = CPU M.empty M.empty M.empty [] [] [] True 0
 
+emptyCPUNI :: CPU
+emptyCPUNI = CPU M.empty M.empty M.empty [] [] [] False 0
+
 -- | Función que búsca los posibles labels dentro de una sequencia de stms.
 splitStms
   :: [Stm]
@@ -401,7 +404,7 @@ loadMain tmain fr s = do
 
 ----------------------------------------
 ----------------------------------------
--- | Inicializador
+-- | Inicializador interactivo
 startInteractive
   :: 
         -- | Fragmentos de funciones ya definidas. (fuera del main)
@@ -410,7 +413,7 @@ startInteractive
   -> [(Label, Symbol)]
         -- | Básicamente el main.
   -> ([Stm], Frame)
-  -> IO ()
+  -> IO (Int, [Symbol])
 startInteractive fs ss (tmain, mainFr) =
   let (factMain, rests) = splitStms tmain
       (cpuInit', me   ) = runState
@@ -420,18 +423,40 @@ startInteractive fs ss (tmain, mainFr) =
       factMain' = if null factMain then snd $ head rests else factMain
   in  evalStateT (interactive factMain') cpuInit
 
+-- | Inicializador no interactivo
+startInterp
+  :: 
+        -- | Fragmentos de funciones ya definidas. (fuera del main)
+     [(Frame, [Stm])]
+        -- | Strings.
+  -> [(Label, Symbol)]
+        -- | Básicamente el main.
+  -> ([Stm], Frame)
+  -> IO (Int, [Symbol])
+startInterp fs ss (tmain, mainFr) =
+  let (factMain, rests) = splitStms tmain
+      (cpuInit', me   ) = runState
+        (loadMain tmain mainFr $ loadProcs fs $ loadLabels ss $ return
+          emptyCPUNI
+        )
+        memSize
+      cpuInit   = uTemp rv me $ uTemp fp me $ uTemp sp me cpuInit'
+      factMain' = if null factMain then snd $ head rests else factMain
+  in  evalStateT (interactive factMain') cpuInit
 
-interactive :: [Stm] -> RC ()
+
+interactive :: [Stm] -> RC (Int, [Symbol])
 interactive [] = do
   cpu <- get
   case frameStack cpu of
-    [f] -> liftIO $ putStrLn (printCpu cpu)
-    _   -> return ()
+    [f] ->
+      liftIO $ putStrLn (printCpu cpu) >> return (mem cpu ! rv, output cpu)
+    _ -> return (0, [])
 interactive s@(stm : stms) = do
   cpu <- get
-  liftIO $ putStrLn ("Next stm: " ++ renderStm stm)
-  ln <- if inter cpu
+  ln  <- if inter cpu
     then do
+      liftIO $ putStrLn ("Next stm: " ++ renderStm stm)
       liftIO (putStr "> " >> hFlush stdout)
       liftIO getLine
     else return "c"
