@@ -41,6 +41,7 @@ library
         , TigerInterpPP
         , TigerInteractive
         , TigerInterpTypes
+        , TigerInterpFrame
         , TigerQQ
       -- Tercer entrega. So vo.
   build-depends:       base

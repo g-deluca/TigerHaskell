@@ -13,7 +13,7 @@ import           Prelude                 hiding ( (<>) )
 
 import           TigerTemp
 import           TigerTree
-import           TigerFrame
+import           TigerInterpFrame
 
 import           TigerSymbol
 

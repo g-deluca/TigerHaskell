@@ -2,7 +2,7 @@ module TigerInterpTypes where
 
 import           Prelude                 hiding ( (!!) )
 import           TigerSymbol
-import           TigerFrame
+import           TigerInterpFrame
 import           TigerTree
 import           TigerTemp
 import           Data.Map                      as M

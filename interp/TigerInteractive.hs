@@ -10,7 +10,7 @@ import           Data.List                     as L
 import           Data.Map                      as M
                                          hiding ( null )
 import           TigerTree
-import           TigerFrame
+import           TigerInterpFrame
 import           TigerSymbol
 import           Control.Arrow
 import           Control.Monad.State
@@ -20,7 +20,7 @@ import           System.Exit
 
 
 ----------------------------------------------------------------------
------- Requiere que todos los argumentos sean pasados por stack ------
+-- Requiere que todos los argumentos sean pasados por stack
 ----------------------------------------------------------------------
 
 ----------------------------------------
@@ -267,7 +267,7 @@ iexp (Call (Name f) es) = do
       -- Deberíamos preparar bien la info de los argumentos, los access de estos
       -- con los argumentos reales que están en |es'|.
       let mvsPreArgs =
-            zipWith (\a i -> Move (TigerFrame.exp a 0) (Const i)) acc es'
+            zipWith (\a i -> Move (TigerInterpFrame.exp a 0) (Const i)) acc es'
       let collisions = getCollisions body cpu
 
       lcls <- parentLocals
