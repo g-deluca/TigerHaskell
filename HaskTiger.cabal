@@ -12,7 +12,7 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  hs-source-dirs:      src
+  hs-source-dirs:      src, interp
   other-modules: State
   exposed-modules:
       -- Primer entrega
@@ -38,7 +38,10 @@ library
         , TigerPrettyIr
         , TigerCanon
         -- Experimental
-        , TigerInterp
+        , TigerInterpPP
+        , TigerInteractive
+        , TigerInterpTypes
+        , TigerInterpFrame
         , TigerQQ
       -- Tercer entrega. So vo.
   build-depends:       base
@@ -124,6 +127,7 @@ test-suite Interp
                      , directory
                      , ansi-terminal
                      , containers
+                     , cond
                      , HaskTiger
   other-modules: Tools
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
