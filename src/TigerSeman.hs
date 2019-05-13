@@ -416,7 +416,16 @@ transExp(SeqExp es p) = fmap last (mapM transExp es)
 -- do
 --       es' <- mapM transExp es
 --       return ( () , snd $ last es')
-transExp(AssignExp var val p) = error "Completar"
+transExp(AssignExp var val p) = do
+  (_, tipo_var) <- transVar var
+  -- Primero, revisamos que la variable no sea de sólo lectura
+  when (equivTipo tipo_var (TInt RO)) $ addpos (derror (pack "Variable de solo lectura")) p
+  (_, tipo_val) <- transExp val
+  -- Y después, nos fijamos que el tipo declarado para la variable 'var' coincida con el valor
+  -- de la expresión 'val'
+  C.unlessM (tiposIguales tipo_var tipo_val) $ errorTiposMsg p "En la asignación ->" tipo_var tipo_val
+  -- Si son iguales devolvemos cualquiera de los dos
+  return ((), tipo_val)
 transExp(IfExp co th Nothing p) = do
         -- ** (ccond , co') <- transExp co
   -- Analizamos el tipo de la condición
