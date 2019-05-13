@@ -43,7 +43,7 @@ import           Debug.Trace                (trace)
 -- este modulo. Mi consejo es que sean /lo más ordenados posible/ teniendo en cuenta
 -- que van a tener que reescribir bastante.
 
-class (Demon w, Monad w) => Manticore w where
+class (Demon w, Monad w, UniqueGenerator w) => Manticore w where
   -- | Inserta una Variable al entorno
     insertValV :: Symbol -> ValEntry -> w a -> w a
   -- | Inserta una Función al entorno
@@ -154,7 +154,9 @@ buscarM s ((s',t,_):xs) | s == s' = Just t
 -- de la variable a la que se está __accediendo__.
 -- ** transVar :: (MemM w, Manticore w) => Var -> w (BExp, Tipo)
 transVar :: (Manticore w) => Var -> w ( () , Tipo)
-transVar (SimpleVar s)      = getTipoValV s -- Nota [1]
+transVar (SimpleVar s)      = do
+  tipo_s <- getTipoValV s -- Nota [1]
+  return ((), tipo_s)
 transVar (FieldVar v s)     = do
   ((), tipo_v) <- transVar v
   -- Chequeamos que tipo_v es TRecord
@@ -184,14 +186,19 @@ transVar (SubscriptVar v e) = do
 transTy :: (Manticore w) => Ty -> w Tipo
 transTy (NameTy s)      = getTipoT s
 transTy (RecordTy flds) = do
-  -- Que la posición arranque de 0 fue una decisión random.
-  let fields = map (\((symbol, ty), n) -> (symbol, transTy ty, n)) (zip flds [0..])
+  -- Tomo los nombres de los campos del record en el orden que los declararon
+  let symbols =  P.map fst flds
+  -- Traduzco los tipos de cada uno de ellos en el mismo orden. Uso \mapM\ porque
+  -- hay que "liftear" la mónada de transTy
+  tipos <- mapM (transTy . snd) flds
+  -- Por último, junto todo y le agrego la posición
+  let fields = zip3 symbols tipos [0..]
   -- TODO: Revisar que Manticore sea una instancia de Unique
   unique <- mkUnique
   return (TRecord fields unique)
 transTy (ArrayTy s) = do
   unique <- mkUnique
-  tipo_s <- transTy s
+  tipo_s <- getTipoT s
   return (TArray tipo_s unique)
 
 
@@ -222,16 +229,16 @@ transDecs [] m                               = m
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertValV|
 transDecs ((VarDec nm escap t init p): xs) m = do
-  tipo_init <- transExp init
+  ((), tipo_init) <- transExp init
   -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
   -- las declaraciones.
   case t of
     Just ty_t -> do
-      tipo_t <- transTy ty_t
-      if tiposIguales tipo_init tipo_t
-        -- Revisar bien el caso de los records
-        then insertValV nm tipo_init (transDecs xs m)
-        else flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm))
+      tipo_t <- getTipoT ty_t
+      C.ifM (tiposIguales tipo_init tipo_t)
+         -- Revisar bien el caso de los records
+            (insertValV nm tipo_init (transDecs xs m))
+            (flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm)))
     Nothing ->
       -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
       insertValV nm tipo_init (transDecs xs m)
