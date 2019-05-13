@@ -220,10 +220,23 @@ transDecs :: Manticore w => [Dec] -> w a -> w a
 -- Caso base.
 transDecs [] m                               = m
 ----------------------------------------
--- Aquí veremos brillar la abstracción que tomamos en |invertValV|
-transDecs ((VarDec nm escap t init p): xs) m = m
+-- Aquí veremos brillar la abstracción que tomamos en |insertValV|
+transDecs ((VarDec nm escap t init p): xs) m = do
+  tipo_init <- transExp init
+  -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
+  -- las declaraciones.
+  case t of
+    Just ty_t -> do
+      tipo_t <- transTy ty_t
+      if tiposIguales tipo_init tipo_t
+        -- Revisar bien el caso de los records
+        then insertValV nm tipo_init (transDecs xs m)
+        else flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm))
+    Nothing ->
+      -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
+      insertValV nm tipo_init (transDecs xs m)
 ----------------------------------------
--- Aquí veremos brillar la abstracción que tomamos en |invertFunV| Recuerden
+-- Aquí veremos brillar la abstracción que tomamos en |insertFunV| Recuerden
 -- viene una lista de declaración de funciones, todas se toman como mutuamente
 -- recursivas así que tendrán que hacer un poco más de trabajo.
 transDecs ((FunctionDec fs) : xs)          m = m
