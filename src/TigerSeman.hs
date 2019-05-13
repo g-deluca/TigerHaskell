@@ -154,9 +154,24 @@ buscarM s ((s',t,_):xs) | s == s' = Just t
 -- de la variable a la que se está __accediendo__.
 -- ** transVar :: (MemM w, Manticore w) => Var -> w (BExp, Tipo)
 transVar :: (Manticore w) => Var -> w ( () , Tipo)
-transVar (SimpleVar s)      = undefined -- Nota [1]
-transVar (FieldVar v s)     = undefined
-transVar (SubscriptVar v e) = undefined
+transVar (SimpleVar s)      = getTipoValV s -- Nota [1]
+transVar (FieldVar v s)     = do
+  ((), tipo_v) <- transVar v
+  -- Chequeamos que tipo_v es TRecord
+  case tipo_v of
+    TRecord fields _ ->
+      maybe
+        -- Puede ocurrir que se intente acceder a un record mediante un campo inexistente
+        (derror (pack ("El campo " ++ show s ++ " no pertenece al record " ++ show v)))
+        (\tipo_s -> return ((), tipo_s))
+        (buscarM s fields)
+    _ -> derror (pack ("La variable " ++ show v ++ " no es un record"))
+transVar (SubscriptVar v e) = do
+  ((), tipo_v) <- transVar v
+  case tipo_v of
+    -- Los arreglos son todos del mismo tipo
+    TArray tipo_s _ -> return ((), tipo_s)
+    _ -> derror (pack ("La variable " ++ show v ++ " no es un array"))
 
 -- | __Completar__ 'TransTy'
 -- El objetivo de esta función es dado un tipo
@@ -167,9 +182,17 @@ transVar (SubscriptVar v e) = undefined
 -- que 'TransTy ' no necesita ni 'MemM ' ni devuelve 'BExp'
 -- porque no se genera código intermedio en la definición de un tipo.
 transTy :: (Manticore w) => Ty -> w Tipo
-transTy (NameTy s)      = undefined
-transTy (RecordTy flds) = undefined
-transTy (ArrayTy s)     = undefined
+transTy (NameTy s)      = getTipoT s
+transTy (RecordTy flds) = do
+  -- Que la posición arranque de 0 fue una decisión random.
+  let fields = map (\((symbol, ty), n) -> (symbol, transTy ty, n)) (zip flds [0..])
+  -- TODO: Revisar que Manticore sea una instancia de Unique
+  unique <- mkUnique
+  return (TRecord fields unique)
+transTy (ArrayTy s) = do
+  unique <- mkUnique
+  tipo_s <- transTy s
+  return (TArray tipo_s unique)
 
 
 fromTy :: (Manticore w) => Ty -> w Tipo
