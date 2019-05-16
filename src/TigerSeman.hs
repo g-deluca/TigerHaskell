@@ -419,6 +419,7 @@ transExp(SeqExp es p) = fmap last (mapM transExp es)
 transExp(AssignExp var val p) = do
   (_, tipo_var) <- transVar var
   -- Primero, revisamos que la variable no sea de sólo lectura
+  -- TODO: Revisar. Creo que equivTipo no distingue entre RO y RW
   when (equivTipo tipo_var (TInt RO)) $ addpos (derror (pack "Variable de solo lectura")) p
   (_, tipo_val) <- transExp val
   -- Y después, nos fijamos que el tipo declarado para la variable 'var' coincida con el valor
@@ -456,7 +457,23 @@ transExp(WhileExp co body p) = do
 transExp(ForExp nv mb lo hi bo p) = error "Completar" -- Completar
 transExp(LetExp dcs body p) = transDecs dcs (transExp body)
 transExp(BreakExp p) = return ((), TUnit)
-transExp(ArrayExp sn cant init p) = error "Completar" -- Completar
+transExp(ArrayExp sn cant init p) = do
+  tipo_sn <- getTipoT sn
+  -- Primero, miramos que sn sea efectivamente un arreglo
+  case tipo_sn of
+    TArray tipo_elem _ -> do
+      (_, tipo_cant) <- transExp cant
+      -- Después me fijo que el valor ingresado para indicar la longitud sea de tipo
+      -- entero. Comparo con 'RO' porque \equivTipo\ no distingue entre RO y RW.
+      unless (equivTipo tipo_cant (TInt RO))
+             (errorTiposMsg p "En la longitud del array" tipo_cant (TInt RO))
+      (_, tipo_init) <- transExp init
+      -- Por último nos fijamos que el tipo de los elementos de arrego y el de la
+      -- expresión inicial coincidan
+      C.unlessM (tiposIguales tipo_elem tipo_init) $ errorTiposMsg p "En el array" tipo_elem tipo_init
+      -- Si llegamo' a esta punto este punto está todo bien
+      return ((), tipo_elem)
+
 
 
 -- Un ejemplo de estado que alcanzaría para realizar todas la funciones es:
