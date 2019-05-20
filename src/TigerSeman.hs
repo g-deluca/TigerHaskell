@@ -452,9 +452,26 @@ transExp(WhileExp co body p) = do
   (_ , coTy) <- transExp co
   unless (equivTipo coTy TBool) $ errorTiposMsg p "Error en la condición del While" coTy TBool
   (_ , boTy) <- transExp body
-  unless (equivTipo boTy TUnit) $ errorTiposMsg p "Error en el cuerpo del While" boTy TBool
+  unless (equivTipo boTy TUnit) $ errorTiposMsg p "Error en el cuerpo del While" boTy TUnit
   return ((), TUnit)
-transExp(ForExp nv mb lo hi bo p) = error "Completar" -- Completar
+transExp(ForExp nv mb lo hi bo p) = do
+  -- nv es el nombre de la variable que declara el for, mb si escapa o no
+  -- lo y hi son lower y upper bound, bo es el body y p es la posición
+
+  -- Chequeamos que el límite inferior de la variable sea una expresión de tipo entero
+  (_, tipo_lo) <- transExp lo
+  unless (equivTipo tipo_lo (TInt RW)) $ errorTiposMsg p "Error en la expresión 'lo' del For" tipo_lo (TInt RW)
+  -- Ahora lo mismo por con límite superior
+  (_, tipo_hi) <- transExp hi
+  unless (equivTipo tipo_hi (TInt RW)) $ errorTiposMsg p "Error en la expresión 'hi' del For" tipo_hi (TInt RW)
+  -- Acá deberíamos chequear que lo < hi. Pero para eso necesitamos el código intermedio.
+  -- TODO: En la próxima etapa ^. (Ver Tiger Language Reference Manual)
+  -- Chequeamos que el cuerpo del for no produzca valor. (Ver Tiger Language Reference Manual)
+  (_ , tipo_bo) <- insertVRO nv $ transExp bo
+  unless (equivTipo tipo_bo TUnit) $ errorTiposMsg p "Error en el cuerpo del For" tipo_bo TUnit
+  -- Si llegamos hasta acá está todo bien. Como el for no produce valores, devolvemos TUnit.
+  return ((), TUnit)
+
 transExp(LetExp dcs body p) = transDecs dcs (transExp body)
 transExp(BreakExp p) = return ((), TUnit)
 transExp(ArrayExp sn cant init p) = do
