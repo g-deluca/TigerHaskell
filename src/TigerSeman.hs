@@ -473,6 +473,7 @@ transExp(ArrayExp sn cant init p) = do
       C.unlessM (tiposIguales tipo_elem tipo_init) $ errorTiposMsg p "En el array" tipo_elem tipo_init
       -- Si llegamo' a esta punto este punto está todo bien
       return ((), tipo_elem)
+    _ -> flip addpos p $ derror (pack "Error de tipos.")
 
 
 
