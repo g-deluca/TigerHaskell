@@ -232,21 +232,58 @@ transDecs ((VarDec nm escap t init p): xs) m = do
   ((), tipo_init) <- transExp init
   -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
   -- las declaraciones.
+  when (equivTipo tipo_init TUnit)
+       (flip addpos p $ derror (pack ("No se admiten procedimientos en: " ++ show nm)))
   case t of
     Just ty_t -> do
       tipo_t <- getTipoT ty_t
-      C.ifM (tiposIguales tipo_init tipo_t)
-         -- Revisar bien el caso de los records
-            (insertValV nm tipo_init (transDecs xs m))
-            (flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm)))
-    Nothing ->
+      -- TODO: Revisar bien el caso de los records
+      if (equivTipo tipo_init tipo_t)
+        then (insertValV nm tipo_init (transDecs xs m))
+        else (flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm)))
+    Nothing -> do
       -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
+      when (equivTipo tipo_init TNil)
+           (flip addpos p $ derror (pack ("Debe explicitarse el tipo: " ++ show nm)))
       insertValV nm tipo_init (transDecs xs m)
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertFunV| Recuerden
 -- viene una lista de declaración de funciones, todas se toman como mutuamente
 -- recursivas así que tendrán que hacer un poco más de trabajo.
-transDecs ((FunctionDec fs) : xs)          m = m
+-- fs ::[(Nombre [(Symbol, Escapa, Ty) -- Tipo escrito], Maybe Symbol -- Tipo de retorno, Exp -- Body, Pos)]
+transDecs (FunctionDec fs : xs) m =
+  -- TODO: Revisar que no haya nombres repetidos
+  -- insertFunV :: Symbol -> FunEntry -> w a -> w a
+  -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
+  let
+    insert_headers [] m = m
+    insert_headers ((nm, args, mty, _body, p):fs) m = do
+      uniq <- mkUnique
+      tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
+      case mty of
+        Just s -> do
+          tipo_s <- getTipoT s
+          insertFunV nm (uniq, nm, tipo_args, tipo_s, Propia) (insert_headers fs m)
+        Nothing ->
+          insertFunV nm (uniq, nm, tipo_args, TUnit, Propia) (insert_headers fs m)
+
+    insert_args [] m = m
+    insert_args ((nm, tipo):args) m = do
+      insertValV nm tipo (insert_args args m)
+
+    insert_bodies [] m = m
+    insert_bodies ((nm, args, _mty, body, p):fs) m = do
+      tipo_args <- mapM (\(arg_nm, _, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo))) args
+      ((), tipo_body) <- insert_args tipo_args (transExp body)
+      -- Chequeamos que tipo_body coincida con el declarado
+      (_, _, _, tipo_nm, _) <- getTipoFunV nm
+      unless (equivTipo tipo_nm tipo_body) $ errorTiposMsg p "En la declaracion " tipo_nm tipo_body
+      insert_bodies fs m
+
+  in insert_headers fs (insert_bodies fs (transDecs xs m))
+
+
+
 ----------------------------------------
 transDecs ((TypeDec xs) : xss)              m =
   let
