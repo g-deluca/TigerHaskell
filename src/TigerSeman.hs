@@ -366,7 +366,20 @@ transExp UnitExp{} = return ((), TUnit) -- ** fmap (,TUnit) unitExp
 transExp NilExp{} = return ((), TNil) -- ** fmap (,TNil) nilExp
 transExp (IntExp i _) = return ((), TInt RW) -- ** fmap (,TInt RW) (intExp i)
 transExp (StringExp s _) = return (() , TString) -- ** fmap (,TString) (stringExp (pack s))
-transExp (CallExp nm args p) = undefined -- Completar
+transExp (CallExp nm args p) = do
+  (_, _, tipos_params, tipo_nm, _) <- getTipoFunV nm
+  tipos_args <- mapM transExp args
+
+  -- Comparamos que los tipos declarados coincidan con el tipo de los argumentos recibidos.
+  -- Nos inventamos unas tuplas para usar la función dada 'cmpZip'
+  cmpZip
+    (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
+    (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
+
+  -- Si llegamos a este punto, no hay errores de tipo, entonces devolvemos 'tipo_nm'
+  return ((), tipo_nm)
+
+
 transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
         (_ , el) <- transExp el'
         (_ , er) <- transExp er'
