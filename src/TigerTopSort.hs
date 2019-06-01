@@ -10,6 +10,7 @@ import           TigerSymbol                    ( Symbol )
 
 import           Control.Monad.State
 import           Data.List
+import           Data.Maybe
 
 import qualified Data.Map                      as M
 
@@ -90,4 +91,8 @@ kahnSort' xs = ret $ execState (iterador initialSyms) (GR initialDeps [])
 -- permutación de la lista original, manteniendo la estructura de sus tipos (los
 -- |Ty|)
 kahnSort :: [(Symbol, Ty)] -> [(Symbol, Ty)]
-kahnSort = undefined
+kahnSort tys =
+  let sortedTys = kahnSort' tys
+  -- Asumimos que 'fromJust' no falla porque estamos buscando los nombres que
+  -- ya fueron procesados.
+  in map (\symbol -> (symbol, fromJust (lookup symbol tys))) sortedTys

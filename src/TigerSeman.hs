@@ -283,7 +283,6 @@ transDecs (FunctionDec fs : xs) m =
   in insert_headers fs (insert_bodies fs (transDecs xs m))
 
 
-
 ----------------------------------------
 transDecs ((TypeDec xs) : xss)              m =
   let
@@ -302,7 +301,8 @@ transDecs ((TypeDec xs) : xss)              m =
     -- (4)
     insertSortedTys sortedTys $
 ----------------------------------------
-    undefined -- Completar el algoritmo.
+    -- Completar el algoritmo.
+    insertRecords recordsTy (fmap fst xs') m
 ----------------------------------------
 -- Las declaraciones de tipos al igual que las funciones vendrán en batch de
 -- tipos mutuamente recursivos.
@@ -316,13 +316,18 @@ transDecs ((TypeDec xs) : xss)              m =
 --   (rName, rTy) -> insertTipoT rName (TRecordRef rName)
 insertRecordsAsRef  :: Manticore w => [(Symbol, Ty)] -> w a -> w a
 insertRecordsAsRef [] m = m
-insertRecordsAsRef ((rSym, rTy) : rs) m = undefined -- Completar el algoritmo.
+insertRecordsAsRef ((rName, _) : rs) m =
+  insertTipoT rName (RefRecord rName) $ insertRecordsAsRef rs m
+
 -- + 4) Luego siguiendo el resultado del Sort Topológico insertamos el resto de
 --   los tipos, para esto van a necesitar una función |transTy :: Ty -> Tipo|
 --   que sólo analizará |Ty| que __no__ son records.
 insertSortedTys :: Manticore w => [(Symbol, Ty)] -> w a -> w a
 insertSortedTys [] m = m
-insertSortedTys ((tSym, tTy) : ts) m = undefined -- Completar el algoritmo.
+insertSortedTys ((tSym, tTy) : ts) m = do
+  tTipo <- transTy tTy
+  insertTipoT tSym tTipo $ insertSortedTys ts m
+
 ----------------------------------------
 -- Pequeño parate acá, en el entorno tenemos los records definidos como
 -- referencias a sí mismo y a los demás tipos con sus estructuras pero con
@@ -341,7 +346,7 @@ insertSortedTys ((tSym, tTy) : ts) m = undefined -- Completar el algoritmo.
 -- En Haskell debemos tener un poco más de cuidado.
 -- Para List vamos a generar el siguiente código:
 --   ```Haskell
---   insertTValV "List" t
+--   insertTipoT "List" t
 --     where t = TRecord [ ("hd", TInt RW) , ("tl", t) ]
 --   ```
 -- Notar que el en el |where| el |t| se usa para continuar definiendose a sí
@@ -373,6 +378,9 @@ insertSortedTys ((tSym, tTy) : ts) m = undefined -- Completar el algoritmo.
 --   lo que va a generar el |t| del ejemplo de |List| (ver más arriba).
 autoRef :: Symbol -> Tipo -> Tipo -> Tipo
 autoRef s t t'@(RefRecord s') | s == s' = t | otherwise = t'
+autoRef s t (TArray t' u) = TArray (autoRef s t t') u
+autoRef s t (TRecord fields u) = TRecord fields' u
+  where fields' = P.map (\(fName, fTipo, fPos) -> (fName, autoRef s t fTipo, fPos)) fields
 autoRef _ _ t = t
 ----------------------------------------
 -- Siguiendo el ejemplo de |List| tendríamos un |insertValV "List" t| donde
@@ -386,7 +394,7 @@ autoRef _ _ t = t
 -- Para propagar la info, podemos tener una funcion auxiliar que sea
 -- |updateT :: Manticore w => Symbol -> Tipo -> Symbol -> w a -> w a| que para
 --  dados |(s : Symbol)|, |(t : Tipo)|, y un simbolo |w|, busque en la tabla el
---  tipo que tiene asignado |w| y lko recorra buscando referencias al record |s|
+--  tipo que tiene asignado |w| y lo recorra buscando referencias al record |s|
 --  y si la encuentra la reemplaze por el tipo |t|. (ver |autoRef|).
 ----------------------------------------
 updateRefs :: Manticore w => Symbol -> Tipo -> Symbol -> w a -> w a
@@ -395,6 +403,37 @@ updateRefs  s t s' m = do
   t'  <- getTipoT s'
   -- | Insertamos el nuevo tipo eliminando si la tiene, las referencias a |s|
   insertTipoT s' (autoRef s t t') m
+
+-- Esta función recibe los nombres de los tipos del batch y recorre la lista
+-- cambiando las referencias a record |s| por el tipo correspondiente |t|.
+updateTipos :: Manticore w => Symbol -> Tipo -> [Symbol] -> w a -> w a
+updateTipos _ _ [] m = m
+updateTipos s t (s':symbols) m =
+  updateRefs s t s' $
+  updateTipos s t symbols m
+
+-- La función `insertRecords` es la encargada de insertar los tipos `Records`
+-- correctamente en el entorno y remover toda referencia a ellos que hubiera.
+-- Dadas la lista de los records del batch |recordsTy : [(Symbol, Ty)]| y la
+-- lista con los nombres de todos los tipos del batch |allTys : [Symbol]|, va recorriendo
+-- la primera, armando los tipos de los records _parcialmente_ y va actualizando
+-- *todos* los tipos restantes.
+insertRecords :: Manticore w => [(Symbol, Ty)] -> [Symbol] -> w a -> w a
+insertRecords [] _ m = m
+insertRecords ((rName, rTy):recordsTys) allTys m = do
+  -- Primero, llamamos a transTy para empezar a armar el tipo de nuestro record.
+  -- En esta instancia, todavía puede haber referencias |RefRecord rName| en los
+  -- campos de rName
+  rTipo' <- transTy rTy
+  -- Por lo tanto, definimos rTipo usando el truco de 'Tying the knot':
+  -- TODO: ¿el |let| sirve tanto como el |where|?
+  let rTipo = autoRef rName rTipo rTipo'
+  -- Cerramos este 'paso' actualizando todas las posibles referencias a rName
+  updateTipos rName rTipo' allTys $
+  -- Finalmente, una vez que actualizamos todas las referencias a rName, seguimos
+  -- procesando el resto de los records
+    insertRecords recordsTys allTys m
+
 
 -- ** transExp :: (MemM w, Manticore w) => Exp -> w (BExp , Tipo)
 transExp :: (Manticore w) => Exp -> w (() , Tipo)
@@ -423,7 +462,7 @@ transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
         case oper of
           EqOp -> if tiposComparables el er EqOp then oOps el er
                   else addpos (derror (pack "Error de Tipos. Tipos no comparables")) p
-          NeqOp ->if tiposComparables el er EqOp then oOps el er
+          NeqOp -> if tiposComparables el er EqOp then oOps el er
                   else addpos (derror (pack "Error de Tipos. Tipos no comparables")) p
           -- Los unifico en esta etapa porque solo chequeamos los tipos, en la próxima
           -- tendrán que hacer algo más interesante.
