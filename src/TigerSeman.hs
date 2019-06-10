@@ -617,6 +617,7 @@ instance Demon Monada where
   -- | 'throwE' de la mónada de excepciones.
   derror =  throwE
   -- TODO: Parte del estudiante
+  adder m s = m
   -- adder :: w a -> Symbol -> w a
 instance Manticore Monada where
   -- | A modo de ejemplo esta es una opción de ejemplo de 'insertValV :: Symbol -> ValEntry -> w a -> w'
@@ -631,10 +632,79 @@ instance Manticore Monada where
       put oldEst
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return a
-  -- TODO: Parte del estudiante
 
-runMonada :: Monada ((), Tipo)-> StGen (Either Symbol ((), Tipo))
+  -- Parte del estudiante
+    insertFunV sym fentry m = do
+      -- | Guardamos el estado actual
+      oldEst <- get
+      -- | Insertamos la variable al entorno (sobrescribiéndolo)
+      put (oldEst{ vEnv = M.insert sym (Func fentry) (vEnv oldEst) })
+      -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
+      res <- m
+      -- | Volvemos a poner el entorno viejo
+      put oldEst
+      -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
+      return res
+
+    insertVRO sym m = do
+      -- | Guardamos el estado actual
+      oldEst <- get
+      -- | Insertamos la variable al entorno (sobrescribiéndolo)
+      put (oldEst{ vEnv = M.insert sym (Var (TInt RO)) (vEnv oldEst) })
+      -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
+      res <- m
+      -- | Volvemos a poner el entorno viejo
+      put oldEst
+      -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
+      return res
+
+    insertTipoT sym tipo m = do
+      -- | Guardamos el estado actual
+      oldEst <- get
+      -- | Insertamos el tipo al entorno (sobrescribiéndolo)
+      put (oldEst{ tEnv = M.insert sym tipo (tEnv oldEst) })
+      -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
+      res <- m
+      -- | Volvemos a poner el entorno viejo
+      put oldEst
+      -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
+      return res
+
+    getTipoFunV sym = do
+      oldEst <- get
+      case (M.lookup sym (vEnv oldEst)) of
+        Nothing -> derror $ pack ("Función " ++ show sym ++ " no encontrada")
+        Just (Var _) -> derror $ pack ("Buscando función " ++ show sym ++ " se encontró una variable")
+        Just (Func fentry) -> return fentry
+
+    getTipoValV sym = do
+      oldEst <- get
+      case (M.lookup sym (vEnv oldEst)) of
+        Nothing -> derror $ pack ("Variable " ++ show sym ++ " no encontrada")
+        Just (Func _) -> derror $ pack ("Buscando variable " ++ show sym ++ " se encontró una función")
+        Just (Var ventry) -> return ventry
+
+    getTipoT sym = do
+      oldEst <- get
+      case (M.lookup sym (tEnv oldEst)) of
+        Nothing -> derror $ pack ("Tipo " ++ show sym ++ " no encontrado")
+        (Just tipo) -> return tipo
+
+    showVEnv m = do
+      s <- get
+      trace (show (vEnv s)) m
+
+    showTEnv m = do
+      s <- get
+      trace (show (tEnv s)) m
+
+runMonada :: Monada ((), Tipo) -> StGen (Either Symbol ((), Tipo))
 runMonada =  flip evalStateT initConf . runExceptT
 
 runSeman :: Exp -> StGen (Either Symbol ((), Tipo))
 runSeman = runMonada . transExp
+
+-- StGen v = State Integer v
+-- newtype State s v = St {runSt :: s -> (v , s)}
+calcularSeman :: Exp -> Either Symbol ((), Tipo)
+calcularSeman = fst . flip TigerUnique.evalState 0 . runSeman
