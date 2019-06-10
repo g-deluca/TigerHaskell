@@ -2,6 +2,7 @@ module Tools where
 
 import           System.Console.ANSI
 import           System.Directory
+import           Debug.Trace                (trace)
 
 -- Pequeña librería para generar suit de pruebas para el compilador.
 -- En gral cada |String| que veamos es en realidad un PATHFILE.
@@ -64,7 +65,7 @@ testSTDBad = testBad bad_loc
 
 -- | Pequeño helper para testear toda una carpeta usando un tester dado.
 testDir :: String -> (String -> IO ()) -> IO ()
-testDir dir tester = (listDirectory dir >>= mapM_ tester)
+testDir dir tester = (listDirectory dir >>= mapM_ (\s -> trace s (tester s)))
 
 --------------------------------------------------------------------------------
 --  Configuración de colores y pavadas para mostrar mensajes significativos

@@ -13,6 +13,7 @@ import           Data.List
 import           Data.Maybe
 
 import qualified Data.Map                      as M
+import           Debug.Trace                (trace)
 
 -- Implementación simple de el algoritmo de
 -- [Kahn](https://en.wikipedia.org/wiki/Topological_sorting)
@@ -95,4 +96,5 @@ kahnSort tys =
   let sortedTys = kahnSort' tys
   -- Asumimos que 'fromJust' no falla porque estamos buscando los nombres que
   -- ya fueron procesados.
-  in map (\symbol -> (symbol, fromJust (lookup symbol tys))) sortedTys
+  in trace (show (tys, sortedTys)) $
+      map (\symbol -> (symbol, fromJust (lookup symbol tys))) sortedTys
