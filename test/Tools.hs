@@ -65,7 +65,7 @@ testSTDBad = testBad bad_loc
 
 -- | Pequeño helper para testear toda una carpeta usando un tester dado.
 testDir :: String -> (String -> IO ()) -> IO ()
-testDir dir tester = (listDirectory dir >>= mapM_ (\s -> trace s (tester s)))
+testDir dir tester = (listDirectory dir >>= mapM_ (\s -> tester s))
 
 --------------------------------------------------------------------------------
 --  Configuración de colores y pavadas para mostrar mensajes significativos

@@ -257,7 +257,7 @@ transDecs (FunctionDec fs : xs) m =
   -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
   let
     insert_headers [] m = m
-    insert_headers ((nm, args, mty, _body, p):fs) m = do
+    insert_headers as@((nm, args, mty, _body, p):fs) m = trace (show as) $ do
       uniq <- mkUnique
       tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
       case mty of
@@ -302,7 +302,8 @@ transDecs ((TypeDec xs) : xss)              m =
     insertSortedTys sortedTys $
 ----------------------------------------
     -- Completar el algoritmo.
-    insertRecords recordsTy (fmap fst xs') m
+    insertRecords recordsTy (fmap fst xs') $
+    transDecs xss m
 ----------------------------------------
 -- Las declaraciones de tipos al igual que las funciones vendrán en batch de
 -- tipos mutuamente recursivos.

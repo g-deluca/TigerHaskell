@@ -96,5 +96,9 @@ kahnSort tys =
   let sortedTys = kahnSort' tys
   -- Asumimos que 'fromJust' no falla porque estamos buscando los nombres que
   -- ya fueron procesados.
-  in trace (show (tys, sortedTys)) $
-      map (\symbol -> (symbol, fromJust (lookup symbol tys))) sortedTys
+      filterFunction (_, m) =
+        case m of
+          Nothing -> False
+          Just _ -> True
+  in 
+      map (\(s, m) -> (s, fromJust m)) $ filter filterFunction $ map (\symbol -> (symbol, lookup symbol tys)) sortedTys
