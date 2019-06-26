@@ -130,7 +130,7 @@ cmpZip :: (Demon m, Monad m) => [(Symbol, Tipo)] -> [(Symbol, Tipo, Int)] -> m (
 cmpZip [] [] = return ()
 cmpZip [] _ = derror $ pack "Diferencia en la cantidad. 1"
 cmpZip _ [] = derror $ pack "Diferencia en la cantidad. 2"
-cmpZip ((sl,tl):xs) ((sr,tr,p):ys) =
+cmpZip ((sl,tl):xs) ((sr,tr,p):ys) = do
         if (equivTipo tl tr && sl == sr)
         then cmpZip xs ys
         else errorTipos tl tr
@@ -187,10 +187,11 @@ transTy :: (Manticore w) => Ty -> w Tipo
 transTy (NameTy s)      = getTipoT s
 transTy (RecordTy flds) = do
   -- Tomo los nombres de los campos del record en el orden que los declararon
-  let symbols =  P.map fst flds
+  let ordered = List.sortBy (Ord.comparing fst) flds
+  let symbols =  P.map fst ordered
   -- Traduzco los tipos de cada uno de ellos en el mismo orden. Uso \mapM\ porque
   -- hay que "liftear" la mónada de transTy
-  tipos <- mapM (transTy . snd) flds
+  tipos <- mapM (transTy . snd) ordered
   -- Por último, junto todo y le agrego la posición
   let fields = zip3 symbols tipos [0..]
   -- TODO: Revisar que Manticore sea una instancia de Unique
@@ -233,18 +234,18 @@ transDecs ((VarDec nm escap t init p): xs) m = do
   -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
   -- las declaraciones.
   when (equivTipo tipo_init TUnit)
-       (flip addpos p $ derror (pack ("No se admiten procedimientos en: " ++ show nm)))
+        (flip addpos p $ derror (pack ("No se admiten procedimientos en: " ++ show nm)))
   case t of
     Just ty_t -> do
       tipo_t <- getTipoT ty_t
       -- TODO: Revisar bien el caso de los records
-      if (equivTipo tipo_init tipo_t)
-        then (insertValV nm tipo_init (transDecs xs m))
+      if (equivTipo tipo_init tipo_t) -- TODO: Comparar string con array of string
+        then (insertValV nm tipo_t (transDecs xs m))
         else (flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm)))
     Nothing -> do
       -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
-      when (equivTipo tipo_init TNil)
-           (flip addpos p $ derror (pack ("Debe explicitarse el tipo: " ++ show nm)))
+      when (tipo_init == TNil)
+            (flip addpos p $ derror (pack ("Debe explicitarse el tipo: " ++ show nm)))
       insertValV nm tipo_init (transDecs xs m)
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertFunV| Recuerden
@@ -257,7 +258,7 @@ transDecs (FunctionDec fs : xs) m =
   -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
   let
     insert_headers [] m = m
-    insert_headers as@((nm, args, mty, _body, p):fs) m = trace (show as) $ do
+    insert_headers as@((nm, args, mty, _body, p):fs) m =  do
       uniq <- mkUnique
       tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
       case mty of
@@ -303,6 +304,7 @@ transDecs ((TypeDec xs) : xss)              m =
 ----------------------------------------
     -- Completar el algoritmo.
     insertRecords recordsTy (fmap fst xs') $
+    --
     transDecs xss m
 ----------------------------------------
 -- Las declaraciones de tipos al igual que las funciones vendrán en batch de
@@ -430,7 +432,7 @@ insertRecords ((rName, rTy):recordsTys) allTys m = do
   -- TODO: ¿el |let| sirve tanto como el |where|?
   let rTipo = autoRef rName rTipo rTipo'
   -- Cerramos este 'paso' actualizando todas las posibles referencias a rName
-  updateTipos rName rTipo' allTys $
+  updateTipos rName rTipo allTys $
   -- Finalmente, una vez que actualizamos todas las referencias a rName, seguimos
   -- procesando el resto de los records
     insertRecords recordsTys allTys m
@@ -461,9 +463,9 @@ transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
         (_ , el) <- transExp el'
         (_ , er) <- transExp er'
         case oper of
-          EqOp -> if tiposComparables el er EqOp then oOps el er
+          EqOp -> if tiposComparables el er EqOp then blackOps el er
                   else addpos (derror (pack "Error de Tipos. Tipos no comparables")) p
-          NeqOp -> if tiposComparables el er EqOp then oOps el er
+          NeqOp -> if tiposComparables el er NeqOp then blackOps el er
                   else addpos (derror (pack "Error de Tipos. Tipos no comparables")) p
           -- Los unifico en esta etapa porque solo chequeamos los tipos, en la próxima
           -- tendrán que hacer algo más interesante.
@@ -477,8 +479,12 @@ transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
           GeOp -> oOps el er
           where oOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
                               && equivTipo l (TInt RO) -- y que además es Entero. [Equiv Tipo es una rel de equiv]
-                           then return ((), TInt RO)
-                           else addpos (derror (pack "Error en el chequeo de una comparación.")) p
+                          then return ((), TInt RO)
+                          else addpos (derror (pack "Error en el chequeo de una comparación.")) p
+                blackOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
+                          then return ((), l)
+                          else addpos (derror (pack "Error en el chequeo de una comparación.")) p
+
 -- | Recordemos que 'RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp'
 -- Donde el primer argumento son los campos del records, y el segundo es
 -- el texto plano de un tipo (que ya debería estar definido). Una expresión
@@ -509,30 +515,30 @@ transExp(SeqExp es p) = fmap last (mapM transExp es)
 transExp(AssignExp var val p) = do
   (_, tipo_var) <- transVar var
   -- Primero, revisamos que la variable no sea de sólo lectura
-  -- TODO: Revisar. Creo que equivTipo no distingue entre RO y RW
-  when (equivTipo tipo_var (TInt RO)) $ addpos (derror (pack "Variable de solo lectura")) p
+  when ( tipo_var == (TInt RO)) $ addpos (derror (pack "Variable de solo lectura")) p
   (_, tipo_val) <- transExp val
   -- Y después, nos fijamos que el tipo declarado para la variable 'var' coincida con el valor
   -- de la expresión 'val'
   C.unlessM (tiposIguales tipo_var tipo_val) $ errorTiposMsg p "En la asignación ->" tipo_var tipo_val
   -- Si son iguales devolvemos cualquiera de los dos
-  return ((), tipo_val)
+  -- La asignación no devuelve valor. Ver página 518 del libro.
+  return ((), TUnit)
 transExp(IfExp co th Nothing p) = do
         -- ** (ccond , co') <- transExp co
   -- Analizamos el tipo de la condición
         (_ , co') <- transExp co
   -- chequeamos que sea un entero.
-        unless (equivTipo co' TBool) $ errorTiposMsg p "En la condición del if->" co' TBool -- Claramente acá se puede dar un mejor error.
+        unless (equivTipo co' TBool) $ errorTiposMsg p "En la condición del if 1->" co' TBool -- Claramente acá se puede dar un mejor error.
         -- ** (cth , th') <- transExp th
   -- Analizamos el tipo del branch.
         (() , th') <- transExp th
   -- chequeamos que sea de tipo Unit.
-        unless (equivTipo th' TUnit) $ errorTiposMsg p "En el branch del if->" th' TUnit
+        unless (equivTipo th' TUnit) $ errorTiposMsg p "En el branch del if2->" th' TUnit
   -- Si todo fue bien, devolvemos que el tipo de todo el 'if' es de tipo Unit.
         return (() , TUnit)
 transExp(IfExp co th (Just el) p) = do
   (_ , condType) <- transExp co
-  unless (equivTipo condType TBool) $ errorTiposMsg p "En la condición del if ->" condType TBool
+  unless (equivTipo condType TBool) (errorTiposMsg p "En la condición del if3->" condType TBool)
   (_, ttType) <- transExp th
   (_, ffType) <- transExp el
   C.unlessM (tiposIguales ttType ffType) $ errorTiposMsg p "En los branches." ttType ffType
@@ -568,7 +574,7 @@ transExp(ArrayExp sn cant init p) = do
   tipo_sn <- getTipoT sn
   -- Primero, miramos que sn sea efectivamente un arreglo
   case tipo_sn of
-    TArray tipo_elem _ -> do
+    TArray tipo_elem u -> do
       (_, tipo_cant) <- transExp cant
       -- Después me fijo que el valor ingresado para indicar la longitud sea de tipo
       -- entero. Comparo con 'RO' porque \equivTipo\ no distingue entre RO y RW.
@@ -579,7 +585,7 @@ transExp(ArrayExp sn cant init p) = do
       -- expresión inicial coincidan
       C.unlessM (tiposIguales tipo_elem tipo_init) $ errorTiposMsg p "En el array" tipo_elem tipo_init
       -- Si llegamo' a esta punto este punto está todo bien
-      return ((), tipo_elem)
+      return ((), TArray tipo_elem u)
     _ -> flip addpos p $ derror (pack "Error de tipos.")
 
 
@@ -618,7 +624,7 @@ instance Demon Monada where
   -- | 'throwE' de la mónada de excepciones.
   derror =  throwE
   -- TODO: Parte del estudiante
-  adder m s = m
+  adder m s = catchE m (\e -> throwE (append e (pack (show s))))
   -- adder :: w a -> Symbol -> w a
 instance Manticore Monada where
   -- | A modo de ejemplo esta es una opción de ejemplo de 'insertValV :: Symbol -> ValEntry -> w a -> w'
