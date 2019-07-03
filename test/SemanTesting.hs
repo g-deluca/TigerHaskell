@@ -16,7 +16,7 @@ main =
   -- testGood "./test/test_code/good" tester "merge.tig"
   testDir good_loc (testSTDGood tester) >>
   putStrLn "\n==== Type Loc ====" >>
-  testDir type_loc (testGood type_loc tester)
+  testDir type_loc (testBad type_loc tester)
   -- putStrLn "\n======= Test ESCAPES FIN ======="
 
 

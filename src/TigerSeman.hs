@@ -22,7 +22,7 @@ import           Control.Monad.Trans.Except
 import           Data.List                  as List
 import           Data.Map                   as M
 import           Data.Ord                   as Ord
-
+import           Data.Set                   as Set
 -- Le doy nombre al Preludio.
 import           Prelude                    as P
 
@@ -257,10 +257,15 @@ transDecs (FunctionDec fs : xs) m =
   -- insertFunV :: Symbol -> FunEntry -> w a -> w a
   -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
   let
+    repeatedNames names =
+      List.length names == List.length (Set.toList (Set.fromList names))
     insert_headers [] m = m
     insert_headers as@((nm, args, mty, _body, p):fs) m =  do
       uniq <- mkUnique
       tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
+      let func_names = List.map (\(nm, _, _, _, _) -> nm) as
+      unless  (repeatedNames func_names)
+              (flip addpos p $ derror (pack ("Nombre repetidos de alguna funcion.")))
       case mty of
         Just s -> do
           tipo_s <- getTipoT s
