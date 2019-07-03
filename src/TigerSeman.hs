@@ -300,17 +300,25 @@ transDecs ((TypeDec xs) : xss)              m =
     -- (1)
     (recordsTy, nrTy) = splitWith (\(s , t) -> either (Left . (s,)) (Right . (s,)) (splitRecordTy t)) xs'
     -- (2)
-    sortedTys = kahnSort nrTy
-  in
-    -- (3)
-    insertRecordsAsRef recordsTy $
-    -- (4)
-    insertSortedTys sortedTys $
-----------------------------------------
-    -- Completar el algoritmo.
-    insertRecords recordsTy (fmap fst xs') $
-    --
-    transDecs xss m
+    maybeSortedTys = kahnSort nrTy
+    -- Función auxiliar para encontrar nombres repetidos dentro del mismo batch
+    repeatedNames names =
+      List.length names /= List.length (Set.toList (Set.fromList names))
+  in do 
+    when (repeatedNames tyNames) (derror $pack "NAMES NAMES NAMES")
+    maybe
+      (derror $ pack "CICLO CICLO CICLO")
+      (\sortedTys -> 
+        -- (3)
+$
+        -- (4)
+        insertSortedTys sortedTys $
+        ----------------------------------------
+        -- Completar el algoritmo.
+        insertRecords recordsTy (fmap fst xs') $
+        --
+        transDecs xss m
+      ) maybeSortedTys
 ----------------------------------------
 -- Las declaraciones de tipos al igual que las funciones vendrán en batch de
 -- tipos mutuamente recursivos.
