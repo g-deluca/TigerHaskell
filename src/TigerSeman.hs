@@ -310,7 +310,7 @@ transDecs ((TypeDec xs) : xss)              m =
       (derror $ pack "CICLO CICLO CICLO")
       (\sortedTys -> 
         -- (3)
-$
+        insertRecordsAsRef recordsTy $
         -- (4)
         insertSortedTys sortedTys $
         ----------------------------------------
