@@ -38,8 +38,8 @@ data Var where
     deriving (Typeable, Data)
 
 instance Show Var where
-    show (SimpleVar s) = show s
-    show (FieldVar v s) = show v ++ "." ++ show s
+    show (SimpleVar s) = unpack s
+    show (FieldVar v s) = show v ++ "." ++ unpack s
     show (SubscriptVar v e) = show v ++ "[" ++ show e ++ "]"
 
 -- | Tipo que representa las expresiones de tiger! Todos los constructores
