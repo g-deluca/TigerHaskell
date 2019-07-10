@@ -93,12 +93,12 @@ class (Demon w, Monad w, UniqueGenerator w) => Manticore w where
 -- | Definimos algunos helpers
 
 -- | `addpos` nos permite agregar información al error.
-addpos :: (Demon w, Show b) => w a -> b -> w a
-addpos t p = E.adder t (pack $ show p)
+addpos :: (Demon w) => w a -> Pos -> w a
+addpos t p = E.adder t (pack $ printPos p)
 
 -- | Patrón de errores...
-errorTiposMsg :: (Demon w, Show p)
-              => p -> String -> Tipo -> Tipo -> w a
+errorTiposMsg :: Demon w
+              => Pos -> String -> Tipo -> Tipo -> w a
 errorTiposMsg p msg t1 t2 = flip addpos p
     $ flip adder (pack msg)
     $ errorTipos t1 t2
@@ -637,7 +637,7 @@ instance Demon Monada where
   -- | 'throwE' de la mónada de excepciones.
   derror =  throwE
   -- TODO: Parte del estudiante
-  adder m s = catchE m (\e -> throwE (append e (pack (show s))))
+  adder m s = catchE m (\e -> throwE (append s e))
   -- adder :: w a -> Symbol -> w a
 instance Manticore Monada where
   -- | A modo de ejemplo esta es una opción de ejemplo de 'insertValV :: Symbol -> ValEntry -> w a -> w'
