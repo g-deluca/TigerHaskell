@@ -522,7 +522,7 @@ transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
                           then return ((), TInt RO)
                           else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
                 blackOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
-                          then return ((), l)
+                          then return ((), TInt RO)
                           else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
 
 -- | Recordemos que 'RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp'
