@@ -62,8 +62,8 @@ equivTipo a b                           = a == b -- Eq
 
 -- | Función /linda/ para mostrar un error de tipos.
 errorTipos :: Demon w => Tipo -> Tipo -> w a
-errorTipos t1 t2 = derror $ pack $ "Error de tipos."
+errorTipos t1 t2 = derror $ pack $ "Se esperaba el tipo *"
                    -- Notar que acá se van a mostrar de forma re crota.
-                   ++ " Tipo *" ++ show t1
-                   ++ "* es distinto a *"
+                   ++ show t1
+                   ++ "* pero se obtuvo *"
                    ++ show t2 ++ "*."

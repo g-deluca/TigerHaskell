@@ -93,15 +93,24 @@ class (Demon w, Monad w, UniqueGenerator w) => Manticore w where
 -- | Definimos algunos helpers
 
 -- | `addpos` nos permite agregar información al error.
-addpos :: (Demon w, Show b) => w a -> b -> w a
-addpos t p = E.adder t (pack $ show p)
+addpos :: (Demon w) => w a -> Pos -> w a
+addpos t p = E.adder t (pack $ printPos p)
 
 -- | Patrón de errores...
-errorTiposMsg :: (Demon w, Show p)
-              => p -> String -> Tipo -> Tipo -> w a
+errorTiposMsg :: Demon w
+              => Pos -> String -> Tipo -> Tipo -> w a
 errorTiposMsg p msg t1 t2 = flip addpos p
+    $ flip adder (pack "Error de tipos | ")
     $ flip adder (pack msg)
     $ errorTipos t1 t2
+
+errorTiposGeneric :: Demon w
+              => Pos -> String -> Symbol -> w a
+errorTiposGeneric p msg nm = flip addpos p
+    $ flip adder (pack "Error de tipos | ")
+    $ flip adder (pack msg)
+    $ flip adder (pack "Ocurrencia: ")
+    $ derror nm
 
 depend :: Ty -> [Symbol]
 depend (NameTy s)    = [s]
@@ -164,16 +173,16 @@ transVar (FieldVar v s)     = do
     TRecord fields _ ->
       maybe
         -- Puede ocurrir que se intente acceder a un record mediante un campo inexistente
-        (derror (pack ("El campo " ++ show s ++ " no pertenece al record " ++ show v)))
+        (derror (pack ("Error de tipos | El campo " ++ unpack s ++ " no pertenece al record " ++ show v)))
         (\tipo_s -> return ((), tipo_s))
         (buscarM s fields)
-    _ -> derror (pack ("La variable " ++ show v ++ " no es un record"))
+    _ -> derror (pack ("Error de tipos | La variable " ++ show v ++ " no es un record"))
 transVar (SubscriptVar v e) = do
   ((), tipo_v) <- transVar v
   case tipo_v of
     -- Los arreglos son todos del mismo tipo
     TArray tipo_s _ -> return ((), tipo_s)
-    _ -> derror (pack ("La variable " ++ show v ++ " no es un array"))
+    _ -> derror (pack ("Error de tipos | La variable " ++ show v ++ " no es un array"))
 
 -- | __Completar__ 'TransTy'
 -- El objetivo de esta función es dado un tipo
@@ -234,18 +243,18 @@ transDecs ((VarDec nm escap t init p): xs) m = do
   -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
   -- las declaraciones.
   when (equivTipo tipo_init TUnit)
-        (flip addpos p $ derror (pack ("No se admiten procedimientos en: " ++ show nm)))
+       (errorTiposGeneric p "No se admiten procedimientos en las declaraciones de variables. " nm)
   case t of
     Just ty_t -> do
-      tipo_t <- getTipoT ty_t
+      tipo_t <- flip addpos p $ getTipoT ty_t
       -- TODO: Revisar bien el caso de los records
-      if (equivTipo tipo_init tipo_t) -- TODO: Comparar string con array of string
+      if (equivTipo tipo_init tipo_t)
         then (insertValV nm tipo_t (transDecs xs m))
-        else (flip addpos p $ derror (pack ("Tipos distintos en: " ++ show nm)))
+        else errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_init tipo_t
     Nothing -> do
       -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
       when (tipo_init == TNil)
-            (flip addpos p $ derror (pack ("Debe explicitarse el tipo: " ++ show nm)))
+           (errorTiposGeneric p "No se permite *nil* como valor inicial sin explicitar el tipo. " nm)
       insertValV nm tipo_init (transDecs xs m)
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertFunV| Recuerden
@@ -258,17 +267,21 @@ transDecs (FunctionDec fs : xs) m =
   -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
   let
     repeatedNames names =
-      List.length names == List.length (Set.toList (Set.fromList names))
+      names List.\\ (Set.toList (Set.fromList names))
     insert_headers [] m = m
     insert_headers as@((nm, args, mty, _body, p):fs) m =  do
       uniq <- mkUnique
       tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
       let func_names = List.map (\(nm, _, _, _, _) -> nm) as
-      unless  (repeatedNames func_names)
-              (flip addpos p $ derror (pack ("Nombre repetidos de alguna funcion.")))
+      let rep_names = repeatedNames func_names
+      when  (rep_names /= [])
+            (errorTiposGeneric
+              p
+              "No se admiten nombres repetidos en el mismo batch de funciones. "
+              (head rep_names))
       case mty of
         Just s -> do
-          tipo_s <- getTipoT s
+          tipo_s <- flip addpos p $ getTipoT s
           insertFunV nm (uniq, nm, tipo_args, tipo_s, Propia) (insert_headers fs m)
         Nothing ->
           insertFunV nm (uniq, nm, tipo_args, TUnit, Propia) (insert_headers fs m)
@@ -282,8 +295,9 @@ transDecs (FunctionDec fs : xs) m =
       tipo_args <- mapM (\(arg_nm, _, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo))) args
       ((), tipo_body) <- insert_args tipo_args (transExp body)
       -- Chequeamos que tipo_body coincida con el declarado
-      (_, _, _, tipo_nm, _) <- getTipoFunV nm
-      unless (equivTipo tipo_nm tipo_body) $ errorTiposMsg p "En la declaracion " tipo_nm tipo_body
+      (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
+      unless (equivTipo tipo_nm tipo_body)
+             (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
       insert_bodies fs m
 
   in insert_headers fs (insert_bodies fs (transDecs xs m))
@@ -300,17 +314,37 @@ transDecs ((TypeDec xs) : xss)              m =
     -- (1)
     (recordsTy, nrTy) = splitWith (\(s , t) -> either (Left . (s,)) (Right . (s,)) (splitRecordTy t)) xs'
     -- (2)
-    sortedTys = kahnSort nrTy
-  in
-    -- (3)
-    insertRecordsAsRef recordsTy $
-    -- (4)
-    insertSortedTys sortedTys $
-----------------------------------------
-    -- Completar el algoritmo.
-    insertRecords recordsTy (fmap fst xs') $
-    --
-    transDecs xss m
+    maybeSortedTys = kahnSort nrTy
+    -- Función auxiliar para encontrar nombres repetidos dentro del mismo batch
+    repeatedNames names =
+      names List.\\ (Set.toList (Set.fromList names))
+    -- Uso la función auxiliar para saber los nombres repetidos en el batch
+    rep_names = repeatedNames tyNames
+    -- Para un mejor mensaje de error:
+    positions = fmap (\(_, _, p) -> p) xs
+
+  in do
+    when (rep_names /= [])
+         (errorTiposGeneric
+            (Range (head positions) (last positions))
+           "No se admiten nombres repetidos en el mismo batch de tipos. "
+           (head rep_names))
+    maybe
+      (errorTiposGeneric
+         (Range (head positions) (last positions))
+        "No se admiten declaraciones ciclicas por fuera del tipo *record*. "
+        (pack "Batch de tipos."))
+      (\sortedTys ->
+        -- (3)
+        insertRecordsAsRef recordsTy $
+        -- (4)
+        insertSortedTys sortedTys $
+        ----------------------------------------
+        -- Completar el algoritmo.
+        insertRecords recordsTy (fmap fst xs') $
+        --
+        transDecs xss m
+      ) maybeSortedTys
 ----------------------------------------
 -- Las declaraciones de tipos al igual que las funciones vendrán en batch de
 -- tipos mutuamente recursivos.
@@ -451,14 +485,15 @@ transExp NilExp{} = return ((), TNil) -- ** fmap (,TNil) nilExp
 transExp (IntExp i _) = return ((), TInt RW) -- ** fmap (,TInt RW) (intExp i)
 transExp (StringExp s _) = return (() , TString) -- ** fmap (,TString) (stringExp (pack s))
 transExp (CallExp nm args p) = do
-  (_, _, tipos_params, tipo_nm, _) <- getTipoFunV nm
+  (_, _, tipos_params, tipo_nm, _) <- addpos (getTipoFunV nm) p
   tipos_args <- mapM transExp args
 
   -- Comparamos que los tipos declarados coincidan con el tipo de los argumentos recibidos.
   -- Nos inventamos unas tuplas para usar la función dada 'cmpZip'
-  cmpZip
-    (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
-    (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
+  flip addpos p $
+    cmpZip
+      (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
+      (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
 
   -- Si llegamos a este punto, no hay errores de tipo, entonces devolvemos 'tipo_nm'
   return ((), tipo_nm)
@@ -469,9 +504,9 @@ transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
         (_ , er) <- transExp er'
         case oper of
           EqOp -> if tiposComparables el er EqOp then blackOps el er
-                  else addpos (derror (pack "Error de Tipos. Tipos no comparables")) p
+                  else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
           NeqOp -> if tiposComparables el er NeqOp then blackOps el er
-                  else addpos (derror (pack "Error de Tipos. Tipos no comparables")) p
+                  else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
           -- Los unifico en esta etapa porque solo chequeamos los tipos, en la próxima
           -- tendrán que hacer algo más interesante.
           PlusOp -> oOps el er
@@ -485,10 +520,10 @@ transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
           where oOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
                               && equivTipo l (TInt RO) -- y que además es Entero. [Equiv Tipo es una rel de equiv]
                           then return ((), TInt RO)
-                          else addpos (derror (pack "Error en el chequeo de una comparación.")) p
+                          else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
                 blackOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
                           then return ((), l)
-                          else addpos (derror (pack "Error en el chequeo de una comparación.")) p
+                          else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
 
 -- | Recordemos que 'RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp'
 -- Donde el primer argumento son los campos del records, y el segundo es
@@ -507,9 +542,12 @@ transExp(RecordExp flds rt p) =
         -- y los que tienen que ser según la definición del record.
         let ordered = List.sortBy (Ord.comparing fst) fldsTys
         -- asumiendo que no nos interesan como el usuario ingresa los campos los ordenamos.
-        _ <- flip addpos p $ cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
+        _ <- cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
         return ((), trec) -- Si todo fue bien devolvemos trec.
-    _ -> flip addpos p $ derror (pack "Error de tipos.")
+    rTy -> (errorTiposGeneric
+            p
+            ("No se puede crear un record en un objeto de tipo: " ++ show rTy)
+            rt)
 transExp(SeqExp es p) = fmap last (mapM transExp es)
   -- last <$> mapM transExp es
 -- ^ Notar que esto queda así porque no nos interesan los
@@ -520,11 +558,16 @@ transExp(SeqExp es p) = fmap last (mapM transExp es)
 transExp(AssignExp var val p) = do
   (_, tipo_var) <- transVar var
   -- Primero, revisamos que la variable no sea de sólo lectura
-  when ( tipo_var == (TInt RO)) $ addpos (derror (pack "Variable de solo lectura")) p
+  when ( tipo_var == (TInt RO))
+       (errorTiposGeneric
+          p
+          ("No se puede modificar el valor de una variable de solo lectura. ")
+          (pack $ show var))
   (_, tipo_val) <- transExp val
   -- Y después, nos fijamos que el tipo declarado para la variable 'var' coincida con el valor
   -- de la expresión 'val'
-  C.unlessM (tiposIguales tipo_var tipo_val) $ errorTiposMsg p "En la asignación ->" tipo_var tipo_val
+  C.unlessM (tiposIguales tipo_var tipo_val)
+            (errorTiposMsg p ("En la asignacion de " ++ (show var) ++ ". ") tipo_var tipo_val)
   -- Si son iguales devolvemos cualquiera de los dos
   -- La asignación no devuelve valor. Ver página 518 del libro.
   return ((), TUnit)
@@ -533,27 +576,28 @@ transExp(IfExp co th Nothing p) = do
   -- Analizamos el tipo de la condición
         (_ , co') <- transExp co
   -- chequeamos que sea un entero.
-        unless (equivTipo co' TBool) $ errorTiposMsg p "En la condición del if 1->" co' TBool -- Claramente acá se puede dar un mejor error.
+        unless (equivTipo co' TBool) $ errorTiposMsg p "En la condición del if. " TBool co'
         -- ** (cth , th') <- transExp th
   -- Analizamos el tipo del branch.
         (() , th') <- transExp th
   -- chequeamos que sea de tipo Unit.
-        unless (equivTipo th' TUnit) $ errorTiposMsg p "En el branch del if2->" th' TUnit
+        unless (equivTipo th' TUnit) $ errorTiposMsg p "En el branch del if. " TUnit th'
   -- Si todo fue bien, devolvemos que el tipo de todo el 'if' es de tipo Unit.
         return (() , TUnit)
 transExp(IfExp co th (Just el) p) = do
   (_ , condType) <- transExp co
-  unless (equivTipo condType TBool) (errorTiposMsg p "En la condición del if3->" condType TBool)
+  unless (equivTipo condType TBool) (errorTiposMsg p "En la condición del if. " TBool condType)
   (_, ttType) <- transExp th
   (_, ffType) <- transExp el
-  C.unlessM (tiposIguales ttType ffType) $ errorTiposMsg p "En los branches." ttType ffType
+  C.unlessM (tiposIguales ttType ffType)
+            (errorTiposMsg p "El tipo de los branches del if no coinciden. " ttType ffType)
   -- Si todo fue bien devolvemos el tipo de una de las branches.
   return ((), ttType)
 transExp(WhileExp co body p) = do
   (_ , coTy) <- transExp co
-  unless (equivTipo coTy TBool) $ errorTiposMsg p "Error en la condición del While" coTy TBool
+  unless (equivTipo coTy TBool) $ errorTiposMsg p "Error en la condicion del While. " TBool coTy
   (_ , boTy) <- transExp body
-  unless (equivTipo boTy TUnit) $ errorTiposMsg p "Error en el cuerpo del While" boTy TUnit
+  unless (equivTipo boTy TUnit) $ errorTiposMsg p "Error en el cuerpo del While. " TUnit boTy
   return ((), TUnit)
 transExp(ForExp nv mb lo hi bo p) = do
   -- nv es el nombre de la variable que declara el for, mb si escapa o no
@@ -561,22 +605,25 @@ transExp(ForExp nv mb lo hi bo p) = do
 
   -- Chequeamos que el límite inferior de la variable sea una expresión de tipo entero
   (_, tipo_lo) <- transExp lo
-  unless (equivTipo tipo_lo (TInt RW)) $ errorTiposMsg p "Error en la expresión 'lo' del For" tipo_lo (TInt RW)
+  unless (equivTipo tipo_lo (TInt RW))
+         (errorTiposMsg p "Error en la expresion 'lo' del For. " (TInt RW) tipo_lo)
   -- Ahora lo mismo por con límite superior
   (_, tipo_hi) <- transExp hi
-  unless (equivTipo tipo_hi (TInt RW)) $ errorTiposMsg p "Error en la expresión 'hi' del For" tipo_hi (TInt RW)
+  unless (equivTipo tipo_hi (TInt RW))
+         (errorTiposMsg p "Error en la expresión 'hi' del For. " (TInt RW) tipo_hi)
   -- Acá deberíamos chequear que lo < hi. Pero para eso necesitamos el código intermedio.
   -- TODO: En la próxima etapa ^. (Ver Tiger Language Reference Manual)
   -- Chequeamos que el cuerpo del for no produzca valor. (Ver Tiger Language Reference Manual)
   (_ , tipo_bo) <- insertVRO nv $ transExp bo
-  unless (equivTipo tipo_bo TUnit) $ errorTiposMsg p "Error en el cuerpo del For" tipo_bo TUnit
+  unless (equivTipo tipo_bo TUnit)
+         (errorTiposMsg p "El cuerpo del For devuelve un valor. " TUnit tipo_bo)
   -- Si llegamos hasta acá está todo bien. Como el for no produce valores, devolvemos TUnit.
   return ((), TUnit)
 
 transExp(LetExp dcs body p) = transDecs dcs (transExp body)
 transExp(BreakExp p) = return ((), TUnit)
 transExp(ArrayExp sn cant init p) = do
-  tipo_sn <- getTipoT sn
+  tipo_sn <- flip addpos p $ getTipoT sn
   -- Primero, miramos que sn sea efectivamente un arreglo
   case tipo_sn of
     TArray tipo_elem u -> do
@@ -584,14 +631,18 @@ transExp(ArrayExp sn cant init p) = do
       -- Después me fijo que el valor ingresado para indicar la longitud sea de tipo
       -- entero. Comparo con 'RO' porque \equivTipo\ no distingue entre RO y RW.
       unless (equivTipo tipo_cant (TInt RO))
-             (errorTiposMsg p "En la longitud del array" tipo_cant (TInt RO))
+             (errorTiposMsg p "En la longitud del array. " (TInt RO) tipo_cant )
       (_, tipo_init) <- transExp init
       -- Por último nos fijamos que el tipo de los elementos de arrego y el de la
       -- expresión inicial coincidan
-      C.unlessM (tiposIguales tipo_elem tipo_init) $ errorTiposMsg p "En el array" tipo_elem tipo_init
+      C.unlessM (tiposIguales tipo_elem tipo_init)
+                (errorTiposMsg p ("En los elementos del arreglo " ++ unpack sn ++ ". ") tipo_init tipo_elem)
       -- Si llegamo' a esta punto este punto está todo bien
       return ((), TArray tipo_elem u)
-    _ -> flip addpos p $ derror (pack "Error de tipos.")
+    notArrTy -> (errorTiposGeneric
+                  p
+                  ("La expresion de tipo " ++ show notArrTy ++ " no es un arreglo. ")
+                  sn)
 
 
 
@@ -629,7 +680,7 @@ instance Demon Monada where
   -- | 'throwE' de la mónada de excepciones.
   derror =  throwE
   -- TODO: Parte del estudiante
-  adder m s = catchE m (\e -> throwE (append e (pack (show s))))
+  adder m s = catchE m (\e -> throwE (append s e))
   -- adder :: w a -> Symbol -> w a
 instance Manticore Monada where
   -- | A modo de ejemplo esta es una opción de ejemplo de 'insertValV :: Symbol -> ValEntry -> w a -> w'
@@ -685,21 +736,21 @@ instance Manticore Monada where
     getTipoFunV sym = do
       oldEst <- get
       case (M.lookup sym (vEnv oldEst)) of
-        Nothing -> derror $ pack ("Función " ++ show sym ++ " no encontrada")
-        Just (Var _) -> derror $ pack ("Buscando función " ++ show sym ++ " se encontró una variable")
+        Nothing -> derror $ pack ("Error de tipos | Funcion " ++ unpack sym ++ " no encontrada")
+        Just (Var _) -> derror $ pack ("Error de tipos | Buscando funcion " ++ unpack sym ++ " se encontró una variable")
         Just (Func fentry) -> return fentry
 
     getTipoValV sym = do
       oldEst <- get
       case (M.lookup sym (vEnv oldEst)) of
-        Nothing -> derror $ pack ("Variable " ++ show sym ++ " no encontrada")
-        Just (Func _) -> derror $ pack ("Buscando variable " ++ show sym ++ " se encontró una función")
+        Nothing -> derror $ pack ("Error de tipos | Variable " ++ unpack sym ++ " no encontrada")
+        Just (Func _) -> derror $ pack ("Error de tipos | Buscando variable " ++ unpack sym ++ " se encontro una funcion")
         Just (Var ventry) -> return ventry
 
     getTipoT sym = do
       oldEst <- get
       case (M.lookup sym (tEnv oldEst)) of
-        Nothing -> derror $ pack ("Tipo " ++ show sym ++ " no encontrado")
+        Nothing -> derror $ pack ("Error de tipos | Tipo " ++ unpack sym ++ " no encontrado")
         (Just tipo) -> return tipo
 
     showVEnv m = do

@@ -14,6 +14,9 @@ prettyVar (SimpleVar s     ) = text $ unpack s
 prettyVar (FieldVar     v s) = prettyVar v <> text "." <> (text $ unpack s)
 prettyVar (SubscriptVar v e) = prettyVar v <> (brackets $ prettyExp e)
 
+renderVar :: Var -> String
+renderVar = render . prettyVar
+
 prettyOp :: Oper -> Doc
 prettyOp PlusOp   = text "+"
 prettyOp MinusOp  = text "-"

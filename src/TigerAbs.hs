@@ -20,8 +20,8 @@ posToLabel (Simple l r) = show l ++ '.' : show r
 posToLabel (Range  l r) = posToLabel l ++ '.' : posToLabel r
 
 printPos :: Pos -> String
-printPos (Simple l c) = "[L:" ++ show l ++ ".C:" ++ show c ++ "]"
-printPos (Range  b e) = "Entre --" ++ printPos b ++ " | " ++ printPos e
+printPos (Simple l c) = "[L:" ++ show l ++ ".C:" ++ show c ++ "] "
+printPos (Range  b e) = "Entre --" ++ printPos b ++ " - " ++ printPos e ++ "-- "
 
 -- | Representamos las variables
 data Var where
@@ -35,7 +35,12 @@ data Var where
     -- la construcción de: SubscriptVar (SimpleVar "a") (OpExp (IntExp 3) PlusOp
     -- (IntExp 4))
     SubscriptVar :: Var -> Exp -> Var
-    deriving (Show, Typeable, Data)
+    deriving (Typeable, Data)
+
+instance Show Var where
+    show (SimpleVar s) = unpack s
+    show (FieldVar v s) = show v ++ "." ++ unpack s
+    show (SubscriptVar v e) = show v ++ "[" ++ show e ++ "]"
 
 -- | Tipo que representa las expresiones de tiger! Todos los constructores
 -- llevan la posición en la que se encuentra el texto en el código fuente que
