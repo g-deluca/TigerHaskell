@@ -576,7 +576,7 @@ transExp(IfExp co th Nothing p) = do
   -- Analizamos el tipo de la condición
         (_ , co') <- transExp co
   -- chequeamos que sea un entero.
-        unless (equivTipo co' TBool) $ errorTiposMsg p "En la condición del if. " TBool co'
+        unless (equivTipo co' TBool) $ errorTiposMsg p "En la condicion del if. " TBool co'
         -- ** (cth , th') <- transExp th
   -- Analizamos el tipo del branch.
         (() , th') <- transExp th
@@ -586,7 +586,7 @@ transExp(IfExp co th Nothing p) = do
         return (() , TUnit)
 transExp(IfExp co th (Just el) p) = do
   (_ , condType) <- transExp co
-  unless (equivTipo condType TBool) (errorTiposMsg p "En la condición del if. " TBool condType)
+  unless (equivTipo condType TBool) (errorTiposMsg p "En la condicion del if. " TBool condType)
   (_, ttType) <- transExp th
   (_, ffType) <- transExp el
   C.unlessM (tiposIguales ttType ffType)
