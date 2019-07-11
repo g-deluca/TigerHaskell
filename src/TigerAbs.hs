@@ -21,7 +21,7 @@ posToLabel (Range  l r) = posToLabel l ++ '.' : posToLabel r
 
 printPos :: Pos -> String
 printPos (Simple l c) = "[L:" ++ show l ++ ".C:" ++ show c ++ "] "
-printPos (Range  b e) = "Entre --" ++ printPos b ++ " - " ++ printPos e ++ " | "
+printPos (Range  b e) = "Entre --" ++ printPos b ++ " - " ++ printPos e ++ "-- "
 
 -- | Representamos las variables
 data Var where

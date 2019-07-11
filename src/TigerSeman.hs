@@ -246,7 +246,7 @@ transDecs ((VarDec nm escap t init p): xs) m = do
        (errorTiposGeneric p "No se admiten procedimientos en las declaraciones de variables. " nm)
   case t of
     Just ty_t -> do
-      tipo_t <- getTipoT ty_t
+      tipo_t <- flip addpos p $ getTipoT ty_t
       -- TODO: Revisar bien el caso de los records
       if (equivTipo tipo_init tipo_t)
         then (insertValV nm tipo_t (transDecs xs m))
@@ -281,7 +281,7 @@ transDecs (FunctionDec fs : xs) m =
               (head rep_names))
       case mty of
         Just s -> do
-          tipo_s <- getTipoT s
+          tipo_s <- flip addpos p $ getTipoT s
           insertFunV nm (uniq, nm, tipo_args, tipo_s, Propia) (insert_headers fs m)
         Nothing ->
           insertFunV nm (uniq, nm, tipo_args, TUnit, Propia) (insert_headers fs m)
@@ -295,7 +295,7 @@ transDecs (FunctionDec fs : xs) m =
       tipo_args <- mapM (\(arg_nm, _, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo))) args
       ((), tipo_body) <- insert_args tipo_args (transExp body)
       -- Chequeamos que tipo_body coincida con el declarado
-      (_, _, _, tipo_nm, _) <- getTipoFunV nm
+      (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
       unless (equivTipo tipo_nm tipo_body) 
              (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
       insert_bodies fs m
@@ -332,7 +332,7 @@ transDecs ((TypeDec xs) : xss)              m =
     maybe
       (errorTiposGeneric 
          (Range (head positions) (last positions))
-        "No se admiten declaraciones cíclicas por fuera del tipo *record*. "
+        "No se admiten declaraciones ciclicas por fuera del tipo *record*. "
         (pack "Batch de tipos."))
       (\sortedTys -> 
         -- (3)
@@ -485,14 +485,15 @@ transExp NilExp{} = return ((), TNil) -- ** fmap (,TNil) nilExp
 transExp (IntExp i _) = return ((), TInt RW) -- ** fmap (,TInt RW) (intExp i)
 transExp (StringExp s _) = return (() , TString) -- ** fmap (,TString) (stringExp (pack s))
 transExp (CallExp nm args p) = do
-  (_, _, tipos_params, tipo_nm, _) <- getTipoFunV nm
+  (_, _, tipos_params, tipo_nm, _) <- addpos (getTipoFunV nm) p
   tipos_args <- mapM transExp args
 
   -- Comparamos que los tipos declarados coincidan con el tipo de los argumentos recibidos.
   -- Nos inventamos unas tuplas para usar la función dada 'cmpZip'
-  cmpZip
-    (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
-    (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
+  flip addpos p $
+    cmpZip
+      (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
+      (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
 
   -- Si llegamos a este punto, no hay errores de tipo, entonces devolvemos 'tipo_nm'
   return ((), tipo_nm)
@@ -541,7 +542,7 @@ transExp(RecordExp flds rt p) =
         -- y los que tienen que ser según la definición del record.
         let ordered = List.sortBy (Ord.comparing fst) fldsTys
         -- asumiendo que no nos interesan como el usuario ingresa los campos los ordenamos.
-        _ <- flip addpos p $ cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
+        _ <- cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
         return ((), trec) -- Si todo fue bien devolvemos trec.
     rTy -> (errorTiposGeneric
             p 
@@ -622,7 +623,7 @@ transExp(ForExp nv mb lo hi bo p) = do
 transExp(LetExp dcs body p) = transDecs dcs (transExp body)
 transExp(BreakExp p) = return ((), TUnit)
 transExp(ArrayExp sn cant init p) = do
-  tipo_sn <- getTipoT sn
+  tipo_sn <- flip addpos p $ getTipoT sn
   -- Primero, miramos que sn sea efectivamente un arreglo
   case tipo_sn of
     TArray tipo_elem u -> do

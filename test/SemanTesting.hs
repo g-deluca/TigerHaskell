@@ -12,11 +12,11 @@ main =
   -- putStrLn "\n==== [escapa.tig, intro.tig] ====" >>
   -- test "./test/test_code" (const bluefail) (const rednice) tester "escapa.tig" >>
   -- test "./test/test_code" (const redfail) (const bluenice) tester "intro.tig" >>
-  -- putStrLn "\n==== Good loc ====" >>
-  -- testDir good_loc (testSTDGood tester) >>
-  -- putStrLn "\n==== Type Loc ====" >>
+  putStrLn "\n==== Good loc ====" >>
+  testDir good_loc (testSTDGood tester) >>
+  putStrLn "\n==== Type Loc ====" >>
   -- testGood "./test/test_code/type" tester "test16.tig"
-  testDir type_loc (testGood type_loc tester)
+  testDir type_loc (testBad type_loc tester)
   -- putStrLn "\n======= Test ESCAPES FIN ======="
 
 
