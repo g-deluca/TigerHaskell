@@ -276,12 +276,25 @@ instance (MemM w) => IrGen w where
                   IsFun  -> Move (Temp rv) <$> unEx bd
         procEntryExit lvl (Nx body)
         return $ Ex $ Const 0
-    simpleVar acc level = P.error "COMPLETAR"
+    -- simpleVar :: Access -> Int -> w BExp
+    simpleVar acc level = do
+      i <- getActualLevel
+      return $ Ex (F.exp acc (level-i))
     varDec acc = do { i <- getActualLevel; simpleVar acc i}
     unitExp = return $ Ex (Const 0)
     nilExp = return $ Ex (Const 0)
     intExp i = return $ Ex (Const i)
-    fieldVar be i = P.error "COMPLETAR"
+    -- fieldVar :: BExp -> Int -> w BExp
+    fieldVar var i = do
+      evar <- unEx var
+      tvar <- newTemp
+      ti <- newTemp
+      return $ Ex $
+          Eseq
+              (seq  [Move (Temp tvar) evar
+                    ,Move (Temp ti) (Const i)
+                    ,ExpS $ externalCall "_checkNil" [Temp tvar]])
+              (Mem $ Binop Plus (Temp tvar) (Binop Mul (Temp ti) (Const wSz)))
     -- subscriptVar :: BExp -> BExp -> w BExp
     subscriptVar var ind = do
         evar <- unEx var
@@ -292,10 +305,19 @@ instance (MemM w) => IrGen w where
             Eseq
                 (seq    [Move (Temp tvar) evar
                         ,Move (Temp tind) eind
-                        ,ExpS $ externalCall "_checkIndex" [Temp tvar, Temp tind]])
+                        -- Cambiamos "_checkIndex" por "_checkIndexArray", is it ok?
+                        ,ExpS $ externalCall "_checkIndexArray" [Temp tvar, Temp tind]])
                 (Mem $ Binop Plus (Temp tvar) (Binop Mul (Temp tind) (Const wSz)))
     -- recordExp :: [(BExp,Int)]  -> w BExp
-    recordExp flds = P.error "COMPLETAR"
+    recordExp flds = do
+        let size = Const $ List.length flds
+        let ordered = map fst $ List.sortBy (comparing snd) flds
+        inis <- mapM unEx ordered
+        t <- newTemp
+        return $ Ex $ Eseq (seq
+          [ExpS $ externalCall "_allocRecord" (size:inis)
+          , Move (Temp t) (Temp rv)
+          ]) (Temp t)
     -- callExp :: Label -> Externa -> Bool -> Level -> [BExp] -> w BExp
     callExp name external isproc lvl args = P.error "COMPLETAR"
     -- letExp :: [BExp] -> BExp -> w BExp
@@ -311,7 +333,11 @@ instance (MemM w) => IrGen w where
         return $ Ex $ Eseq (seq bes) be
     -- breakExp :: w BExp
     -- | JA! No está implementado
-    breakExp = P.error "COMPLETAR"
+    breakExp = do
+      mlabel <- topSalida
+      case mlabel of
+        Just label -> return $ Nx $ Jump (Name label) label
+        _ -> internal $ pack "JA! Tincho gato"
     -- seqExp :: [BExp] -> w BExp
     seqExp [] = return $ Nx $ ExpS $ Const 0
     seqExp bes = case last bes of
@@ -358,7 +384,33 @@ instance (MemM w) => IrGen w where
                     , Label done]
             _ -> internal $ pack "no label in salida"
     -- forExp :: BExp -> BExp -> BExp -> BExp -> w BExp
-    forExp lo hi var body = P.error "COMPLETAR"
+    forExp lo hi var body = do
+      elo <- unEx lo
+      ehi <- unEx hi
+      evar <- unEx var
+      -- | Desempaquetamos el body como un statement
+      cbody <- unNx body
+      -- | Creamos los temporales para efectuar la comparación
+      thi <- newTemp
+      tvar <- newTemp
+      -- | Creamos los labels necesarios
+      test <- newLabel
+      body <- newLabel
+      lastM <- topSalida
+      case lastM of
+        Just done ->
+          case evar of
+            Mem v -> 
+            return $ Nx $ seq
+                [Move tvar evar
+                ,Move thi ehi
+                ,Label test
+                ,CJump LE tvar thi body done
+                ,Label body
+                ,cbody
+                ,Move tvar (Binop Plus tvar (Const 1))
+                ,Jump (Name test) test
+                ,Label done]
     -- ifThenExp :: BExp -> BExp -> w BExp
     ifThenExp cond bod = P.error "COMPLETAR"
     -- ifThenElseExp :: BExp -> BExp -> BExp -> w BExp
