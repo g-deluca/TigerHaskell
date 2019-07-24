@@ -277,6 +277,7 @@ instance (MemM w) => IrGen w where
         procEntryExit lvl (Nx body)
         return $ Ex $ Const 0
     -- simpleVar :: Access -> Int -> w BExp
+    -- | TODO: level es el nivel en el que fue declarada la variable?
     simpleVar acc level = do
       i <- getActualLevel
       return $ Ex (F.exp acc (level-i))
@@ -385,38 +386,79 @@ instance (MemM w) => IrGen w where
             _ -> internal $ pack "no label in salida"
     -- forExp :: BExp -> BExp -> BExp -> BExp -> w BExp
     forExp lo hi var body = do
-      elo <- unEx lo
+      -- | Asignamos el valor de lo a la variable var (valor inicial)
+      evar <- assignExp var lo
+      evar <- unEx evar
       ehi <- unEx hi
-      evar <- unEx var
       -- | Desempaquetamos el body como un statement
       cbody <- unNx body
       -- | Creamos los temporales para efectuar la comparación
-      thi <- newTemp
       tvar <- newTemp
+      thi  <- newTemp
       -- | Creamos los labels necesarios
       test <- newLabel
       body <- newLabel
       lastM <- topSalida
       case lastM of
         Just done ->
-          case evar of
-            Mem v -> 
             return $ Nx $ seq
-                [Move tvar evar
-                ,Move thi ehi
+                [Move (Temp tvar) evar
+                ,Move (Temp thi) ehi
                 ,Label test
-                ,CJump LE tvar thi body done
+                ,CJump LE (Temp tvar) (Temp thi) body done
                 ,Label body
                 ,cbody
-                ,Move tvar (Binop Plus tvar (Const 1))
+                ,Move (Temp tvar) (Binop Plus (Temp tvar) (Const 1))
                 ,Jump (Name test) test
                 ,Label done]
+        _ -> internal $ pack "no label in salida"
     -- ifThenExp :: BExp -> BExp -> w BExp
-    ifThenExp cond bod = P.error "COMPLETAR"
+    ifThenExp cond body = do
+      -- | Desempaquetamos la condición como un condicional
+      ccond <- unCx cond
+      -- | Desempaquetamos el body como un statement
+      cbody <- unNx body
+      -- | creamos dos etiquetas para los saltos del if
+      -- | una correspondiente a la salida
+      done <- newLabel
+      -- | otra correspondiente al cuerpo
+      body <- newLabel
+      return $ Nx $ seq
+          [ ccond (body,done)
+          , Label body
+          , cbody
+          , Label done]
+
     -- ifThenElseExp :: BExp -> BExp -> BExp -> w BExp
-    ifThenElseExp cond bod els = P.error "COMPLETAR"
+    ifThenElseExp cond body els = do
+      -- | Desempaquetamos la condición como un condicional
+      ccond <- unCx cond
+      -- | Desempaquetamos el body como un statement
+      cbody <- unEx body
+      celse <- unEx els
+      -- | creamos dos etiquetas para los saltos del if
+      -- | una correspondiente al caso verdadero
+      ltrue <- newLabel
+      -- | otra correspondiente al caso falso
+      lfalse <- newLabel
+      -- | una ultima para la salida del true
+      ldone <- newLabel
+      -- | Creamos un registro para devolver el resultado
+      ret <- newTemp
+      return $ Ex $ Eseq (seq
+          [ ccond (ltrue,lfalse)
+          , Label ltrue
+          , Move (Temp ret) cbody
+          , Jump (Name ldone) ldone
+          , Label lfalse
+          , Move (Temp ret) celse
+          , Label ldone])
+          (Temp ret)
+
     -- ifThenElseExpUnit :: BExp -> BExp -> BExp -> w BExp
     ifThenElseExpUnit _ _ _ = P.error "COmpletaR?"
+    -- | TODO: Preguntar que onda esto ^
+
     -- assignExp :: BExp -> BExp -> w BExp
     assignExp cvar cinit = do
         cvara <- unEx cvar
@@ -427,10 +469,54 @@ instance (MemM w) => IrGen w where
                 return $ Nx $ seq [Move (Temp t) cin, Move cvara (Temp t)]
             _ -> return $ Nx $ Move cvara cin
     -- binOpIntExp :: BExp -> Abs.Oper -> BExp -> w BExp
-    binOpIntExp le op re = P.error "COMPLETAR"
+    binOpIntExp le op re = do
+      ele <- unEx le
+      ere <- unEx re
+      case op of
+        Abs.PlusOp -> return $ Ex $ Binop Plus ele ere
+        Abs.MinusOp -> return $ Ex $ Binop Minus ele ere
+        Abs.TimesOp -> return $ Ex $ Binop Mul ele ere
+        Abs.DivideOp -> return $ Ex $ Binop Div ele ere
+        _ ->  internal $ pack "deberia llamarse a binOpIntRelExp"
+
+    binOpIntRelExp le op re = do
+      ele <- unEx le
+      ere <- unEx re
+      t <- newLabel
+      f <- newLabel
+      done <- newLabel
+
+      ret <- newTemp
+
+      return $ Ex $ (Eseq (seq
+        [CJump (abs2Tree op) ele ere t f
+        , Label t
+        , Move (Temp ret) (Const 1)
+        , Jump (Name done) done
+        , Label f
+        , Move (Temp ret) (Const 0)
+        , Label done
+        ])
+        (Temp ret))
+
     -- binOpStrExp :: BExp -> Abs.Oper -> BExp -> w BExp
-    binOpStrExp strl op strr = P.error "COMPLETAR"
-    binOpIntRelExp op strr = P.error "COMPLETAR"
+    binOpStrExp strl op strr = do
+      estrl <- unEx strl
+      estrr <- unEx strr
+      t <- newTemp
+      case op of
+        Abs.EqOp ->
+          return $ Ex $ Eseq (seq
+           [ExpS $ externalCall "_stringCompare" [estrl, estrr]
+           , Move (Temp t) (Temp rv)
+           ]) (Temp t)
+        Abs.NeqOp ->
+          return $ Ex $ Eseq (seq
+           [ExpS $ externalCall "_stringCompare" [estrl, estrr]
+           , Move (Temp t) (Temp rv)
+           ]) (Temp t)
+        _ -> internal $ pack "estas haciendo algo raro con binOpStrExp"
+
     -- arrayExp :: BExp -> BExp -> w BExp
     arrayExp size init = do
         sz <- unEx size
@@ -440,3 +526,14 @@ instance (MemM w) => IrGen w where
                 [ExpS $ externalCall "_allocArray" [sz,ini]
                 , Move (Temp t) (Temp rv)
                 ]) (Temp t)
+
+
+-- Funcion auxiliar
+abs2Tree :: Abs.Oper -> Relop
+abs2Tree Abs.EqOp = EQ
+abs2Tree Abs.NeqOp = NE
+abs2Tree Abs.LtOp = LT
+abs2Tree Abs.LeOp = LE
+abs2Tree Abs.GtOp = GT
+abs2Tree Abs.GeOp = GE
+abs2Tree _ = P.error "[abs2Tree] ups! falta implementar"
