@@ -320,7 +320,43 @@ instance (MemM w) => IrGen w where
           , Move (Temp t) (Temp rv)
           ]) (Temp t)
     -- callExp :: Label -> Externa -> Bool -> Level -> [BExp] -> w BExp
-    callExp name external isproc lvl args = P.error "COMPLETAR"
+    callExp name external isproc lvl args = do
+        targs <- mapM (\arg -> do earg <- unEx arg
+                                  tmp  <- newTemp
+                                  return (Temp tmp,Move (Temp tmp) earg) ) args
+        t     <- newTemp
+        -- Obtenemos el nivel del llamante (caller)
+        alev  <- getActualLevel
+        let
+          -- Nombre de los temporales q tienen los argumentos
+          args' = List.map fst targs
+          -- Instrucciones de los arguments
+          ins   = List.map snd targs
+          -- Como llamar a la función
+          call  = case external of
+                       Runtime -> externalCall ("_" ++ unpack name)
+                       Propia  -> Call (Name name)
+          -- Obtenemos el nivel de "name" (callee)
+          lev   = getNlvl lvl
+          -- Calculamos el static link
+          -- "So on each procedure call or variable access, a chain of zero
+          -- or more fetches is required; the length of the chain is just
+          -- the difference in static nesting depth between the two functions involved."
+          -- Pag. 134
+          slink = if lev > alev -- lev: callee , alev: caller
+                  then Temp fp
+                  else F.auxexp (alev-lev)
+        case isproc of
+            -- Porque en este caso no se hacen las "ins", que ponen los args en temps??
+            IsProc ->
+                return $ Nx $
+                    ExpS $ call (slink:args')
+            IsFun ->
+                return $ Ex $
+                    Eseq
+                        (seq    (ins ++ [ExpS (call (slink:args'))
+                                        , Move (Temp t) (Temp rv)]))
+                    (Temp t)
     -- letExp :: [BExp] -> BExp -> w BExp
     letExp [] e = do
       -- Des-empaquetar y empaquetar como un |Ex| puede generar
