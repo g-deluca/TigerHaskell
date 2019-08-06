@@ -543,6 +543,7 @@ instance (MemM w) => IrGen w where
 
       ret <- newTemp
 
+      -- TODO: Esta bien devolver Ex? Deberíamos devolver Cx? Diferencia?
       return $ Ex $ (Eseq (seq
         [CJump (abs2Tree op) ele ere t f
         , Label t
@@ -555,6 +556,7 @@ instance (MemM w) => IrGen w where
         (Temp ret))
 
     -- binOpStrExp :: BExp -> Abs.Oper -> BExp -> w BExp
+    -- TODO: Se puede comparar un string con otros operadores que no sean estos?
     binOpStrExp strl op strr = do
       estrl <- unEx strl
       estrr <- unEx strr
