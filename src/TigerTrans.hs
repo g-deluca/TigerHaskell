@@ -492,8 +492,27 @@ instance (MemM w) => IrGen w where
           (Temp ret)
 
     -- ifThenElseExpUnit :: BExp -> BExp -> BExp -> w BExp
-    ifThenElseExpUnit _ _ _ = P.error "COmpletaR?"
-    -- | TODO: Preguntar que onda esto ^
+    ifThenElseExpUnit cond body els = do
+      -- | Desempaquetamos la condición como un condicional
+      ccond <- unCx cond
+      -- | Desempaquetamos el body como un statement
+      cbody <- unNx body
+      celse <- unNx els
+      -- | creamos dos etiquetas para los saltos del if
+      -- | una correspondiente al caso verdadero
+      ltrue <- newLabel
+      -- | otra correspondiente al caso falso
+      lfalse <- newLabel
+      -- | una ultima para la salida del true
+      ldone <- newLabel
+      return $ Nx $ seq
+          [ ccond (ltrue,lfalse)
+          , Label ltrue
+          , cbody
+          , Jump (Name ldone) ldone
+          , Label lfalse
+          , celse
+          , Label ldone]
 
     -- assignExp :: BExp -> BExp -> w BExp
     assignExp cvar cinit = do
