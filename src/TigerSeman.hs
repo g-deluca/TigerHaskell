@@ -506,16 +506,16 @@ insertRecords ((rName, rTy):recordsTys) allTys m = do
     insertRecords recordsTys allTys m
 
 
--- ** transExp :: (MemM w, Manticore w) => Exp -> w (BExp , Tipo)
-transExp :: (Manticore w) => Exp -> w (() , Tipo)
+transExp :: (MemM w, Manticore w) => Exp -> w (BExp , Tipo)
+-- transExp :: (Manticore w) => Exp -> w (() , Tipo)
 transExp (VarExp v p) = addpos (transVar v) p
-transExp UnitExp{} = return ((), TUnit) -- ** fmap (,TUnit) unitExp
-transExp NilExp{} = return ((), TNil) -- ** fmap (,TNil) nilExp
-transExp (IntExp i _) = return ((), TInt RW) -- ** fmap (,TInt RW) (intExp i)
-transExp (StringExp s _) = return (() , TString) -- ** fmap (,TString) (stringExp (pack s))
+transExp UnitExp{} = return (unitExp, TUnit) -- ** fmap (,TUnit) unitExp
+transExp NilExp{} = return (nilExp, TNil) -- ** fmap (,TNil) nilExp
+transExp (IntExp i _) = return (intExp i, TInt RW) -- ** fmap (,TInt RW) (intExp i)
+transExp (StringExp s _) = return (stringExp (pack s) , TString) -- ** fmap (,TString) (stringExp (pack s))
 transExp (CallExp nm args p) = do
-  (_, _, tipos_params, tipo_nm, _) <- addpos (getTipoFunV nm) p
-  tipos_args <- mapM transExp args
+  (lvl, _, tipos_params, tipo_nm, externa) <- addpos (getTipoFunV nm) p
+  (bexp_args, tipos_args) <- mapM transExp args
 
   -- Comparamos que los tipos declarados coincidan con el tipo de los argumentos recibidos.
   -- Nos inventamos unas tuplas para usar la función dada 'cmpZip'
@@ -524,34 +524,39 @@ transExp (CallExp nm args p) = do
       (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
       (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
 
+  --  callExp :: Label -> Externa -> IsProc -> Level -> [BExp] -> w BExp
+  let bexp_call = callExp nm externa (determineIfProc tipo_nm) lvl bexp_args
   -- Si llegamos a este punto, no hay errores de tipo, entonces devolvemos 'tipo_nm'
-  return ((), tipo_nm)
+  return (bexp_call, tipo_nm)
 
-
+-- REVISAR:
+-- para no hacer mucho lio, paso una funcion como arg a oOps o blackOps dependiendo si es OpInt o OpRelInt
+-- sino habría que separar el case oper of en si es de Rel o no
 transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
-        (_ , el) <- transExp el'
-        (_ , er) <- transExp er'
+        (bexp_el , el) <- transExp el'
+        (bexp_er, er) <- transExp er'
+            
         case oper of
-          EqOp -> if tiposComparables el er EqOp then blackOps el er
+          EqOp -> if tiposComparables el er EqOp then blackOps binOpIntExp el er
                   else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
-          NeqOp -> if tiposComparables el er NeqOp then blackOps el er
+          NeqOp -> if tiposComparables el er NeqOp then blackOps binOpIntExp el er
                   else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
           -- Los unifico en esta etapa porque solo chequeamos los tipos, en la próxima
           -- tendrán que hacer algo más interesante.
-          PlusOp -> oOps el er
-          MinusOp -> oOps el er
-          TimesOp -> oOps el er
-          DivideOp -> oOps el er
-          LtOp -> oOps el er
-          LeOp -> oOps el er
-          GtOp -> oOps el er
-          GeOp -> oOps el er
-          where oOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
+          PlusOp -> oOps binOpIntExp el er
+          MinusOp -> oOps binOpIntExp el er
+          TimesOp -> oOps binOpIntExp el er
+          DivideOp -> oOps binOpIntExp el er
+          LtOp -> oOps binOpIntRelExp el er
+          LeOp -> oOps binOpIntRelExp el er
+          GtOp -> oOps binOpIntRelExp el er
+          GeOp -> oOps binOpIntRelExp el er
+          where oOps toBexpFun l r = if equivTipo l r -- Chequeamos que son el mismo tipo
                               && equivTipo l (TInt RO) -- y que además es Entero. [Equiv Tipo es una rel de equiv]
-                          then return ((), TInt RO)
+                          then return (toBexpFun bexp_el oper bexp_er , TInt RO)
                           else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
                 blackOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
-                          then return ((), TInt RO)
+                          then return (toBexpFun bexp_el oper bexp_er, TInt RO)
                           else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
 
 -- | Recordemos que 'RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp'
@@ -577,29 +582,30 @@ transExp(RecordExp flds rt p) =
             p
             ("No se puede crear un record en un objeto de tipo: " ++ show rTy)
             rt)
-transExp(SeqExp es p) = fmap last (mapM transExp es)
+transExp(SeqExp es p) = do
+-- fmap last (mapM transExp es)
   -- last <$> mapM transExp es
 -- ^ Notar que esto queda así porque no nos interesan los
 -- units intermedios. Eventualmente vamos a coleccionar los códigos intermedios y se verá algo similar a:
--- do
---       es' <- mapM transExp es
---       return ( () , snd $ last es')
+      es' <- mapM transExp es
+      return ( seqExp es', snd $ last es')
 transExp(AssignExp var val p) = do
-  (_, tipo_var) <- transVar var
+  (bexp_var, tipo_var) <- transVar var
   -- Primero, revisamos que la variable no sea de sólo lectura
   when ( tipo_var == (TInt RO))
        (errorTiposGeneric
           p
           ("No se puede modificar el valor de una variable de solo lectura. ")
           (pack $ show var))
-  (_, tipo_val) <- transExp val
+  (bexp_val, tipo_val) <- transExp val
   -- Y después, nos fijamos que el tipo declarado para la variable 'var' coincida con el valor
   -- de la expresión 'val'
   C.unlessM (tiposIguales tipo_var tipo_val)
             (errorTiposMsg p ("En la asignacion de " ++ (show var) ++ ". ") tipo_var tipo_val)
   -- Si son iguales devolvemos cualquiera de los dos
   -- La asignación no devuelve valor. Ver página 518 del libro.
-  return ((), TUnit)
+  return (assignExp bexp_var bexp_val, TUnit)
+  
 transExp(IfExp co th Nothing p) = do
         -- ** (ccond , co') <- transExp co
   -- Analizamos el tipo de la condición
