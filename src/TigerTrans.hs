@@ -275,12 +275,13 @@ instance (MemM w) => IrGen w where
                   IsProc -> unNx bd
                   IsFun  -> Move (Temp rv) <$> unEx bd
         procEntryExit lvl (Nx body)
+        -- TODO: Pregunar qué onda esto. Devolvemos 0 porque no hay que generar
+        -- código intermedio, no?
         return $ Ex $ Const 0
     -- simpleVar :: Access -> Int -> w BExp
-    -- | TODO: level es el nivel en el que fue declarada la variable?
     simpleVar acc level = do
-      i <- getActualLevel
-      return $ Ex (F.exp acc (level-i))
+      actual_level <- getActualLevel
+      return $ Ex (F.exp acc (actual_level - level))
     varDec acc = do { i <- getActualLevel; simpleVar acc i}
     unitExp = return $ Ex (Const 0)
     nilExp = return $ Ex (Const 0)
@@ -323,40 +324,40 @@ instance (MemM w) => IrGen w where
     callExp name external isproc lvl args = do
         targs <- mapM (\arg -> do earg <- unEx arg
                                   tmp  <- newTemp
-                                  return (Temp tmp,Move (Temp tmp) earg) ) args
-        t     <- newTemp
+                                  return (Temp tmp, Move (Temp tmp) earg) ) args
         -- Obtenemos el nivel del llamante (caller)
         alev  <- getActualLevel
         let
-          -- Nombre de los temporales q tienen los argumentos
+          -- Obtenemos el nivel de "name" (callee)
+          lev   = getNlvl lvl
+          -- Nombre de los temporales que tienen los argumentos
           args' = List.map fst targs
-          -- Instrucciones de los arguments
+          -- Instrucciones de los argumentos
           ins   = List.map snd targs
           -- Como llamar a la función
           call  = case external of
-                       Runtime -> externalCall ("_" ++ unpack name)
+                       Runtime -> externalCall $ unpack name -- TODO: Call (Name name) ???
                        Propia  -> Call (Name name)
-          -- Obtenemos el nivel de "name" (callee)
-          lev   = getNlvl lvl
           -- Calculamos el static link
           -- "So on each procedure call or variable access, a chain of zero
           -- or more fetches is required; the length of the chain is just
           -- the difference in static nesting depth between the two functions involved."
           -- Pag. 134
           slink = if lev > alev -- lev: callee , alev: caller
-                  then Temp fp
+                  then P.error "Error en static link"
                   else F.auxexp (alev-lev)
         case isproc of
             -- Porque en este caso no se hacen las "ins", que ponen los args en temps??
             IsProc ->
                 return $ Nx $
-                    ExpS $ call (slink:args')
-            IsFun ->
+                   seq $ ins ++ [ExpS $ call (slink:args')]
+            IsFun -> do
+                res <- newTemp
                 return $ Ex $
                     Eseq
-                        (seq    (ins ++ [ExpS (call (slink:args'))
-                                        , Move (Temp t) (Temp rv)]))
-                    (Temp t)
+                        (seq (ins ++ [ExpS (call (slink:args'))
+                                    , Move (Temp res) (Temp rv)]))
+                    (Temp res)
     -- letExp :: [BExp] -> BExp -> w BExp
     letExp [] e = do
       -- Des-empaquetar y empaquetar como un |Ex| puede generar
