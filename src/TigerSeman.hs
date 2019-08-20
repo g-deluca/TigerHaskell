@@ -10,7 +10,7 @@ import           TigerTopSort
 
 -- Segunda parte imports:
 import           TigerTemp
--- import           TigerTrans
+import           TigerTrans
 
 -- Monads
 import qualified Control.Conditional        as C
@@ -153,35 +153,41 @@ splitWith f = P.foldr (\x rs -> either (addIzq rs) (addDer rs) (f x)) ([] , [])
 addIzq (as,bs) a = (a : as, bs)
 addDer (as,bs) b = (as, b : bs)
 
-buscarM :: Symbol -> [(Symbol, Tipo, Int)] -> Maybe Tipo
+buscarM :: Symbol -> [(Symbol, Tipo, Int)] -> Maybe (Tipo, Int)
 buscarM s [] = Nothing
-buscarM s ((s',t,_):xs) | s == s' = Just t
-                        | otherwise = buscarM s xs
+buscarM s ((s', t, p):xs) | s == s' = Just (t, p)
+                          | otherwise = buscarM s xs
 
 -- | __Completar__ 'transVar'.
 -- El objetivo de esta función es obtener el tipo
 -- de la variable a la que se está __accediendo__.
--- ** transVar :: (MemM w, Manticore w) => Var -> w (BExp, Tipo)
-transVar :: (Manticore w) => Var -> w ( () , Tipo)
+transVar :: (MemM w, Manticore w) => Var -> w (BExp, Tipo)
 transVar (SimpleVar s)      = do
-  tipo_s <- getTipoValV s -- Nota [1]
-  return ((), tipo_s)
+  (tipo_s, access, lvl)  <- getTipoValV s -- Nota [1]
+  simple_bexp <- simpleVar access lvl
+  return (simple_bexp, tipo_s)
 transVar (FieldVar v s)     = do
-  ((), tipo_v) <- transVar v
+  (bexp_v, tipo_v) <- transVar v
   -- Chequeamos que tipo_v es TRecord
   case tipo_v of
     TRecord fields _ ->
       maybe
         -- Puede ocurrir que se intente acceder a un record mediante un campo inexistente
         (derror (pack ("Error de tipos | El campo " ++ unpack s ++ " no pertenece al record " ++ show v)))
-        (\tipo_s -> return ((), tipo_s))
+        (\(tipo_s, pos) -> do
+          field_bexp <- fieldVar bexp_v pos
+          return (field_bexp, tipo_s))
         (buscarM s fields)
     _ -> derror (pack ("Error de tipos | La variable " ++ show v ++ " no es un record"))
 transVar (SubscriptVar v e) = do
-  ((), tipo_v) <- transVar v
-  case tipo_v of
+  (bexp_v, tipo_v) <- transVar v
+  (bexp_e, tipo_e) <- transExp e
+  case (tipo_v, tipo_e) of
     -- Los arreglos son todos del mismo tipo
-    TArray tipo_s _ -> return ((), tipo_s)
+    (TArray tipo_s _, TInt _) -> do
+      subscript_bexp <- subscriptVar bexp_v bexp_e
+      return (subscript_bexp, tipo_s)
+    (TArray _ _, _) -> derror (pack ("Error de tipos | La variable " ++ show e ++ " no es un entero"))
     _ -> derror (pack ("Error de tipos | La variable " ++ show v ++ " no es un array"))
 
 -- | __Completar__ 'TransTy'
