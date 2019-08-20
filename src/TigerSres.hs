@@ -10,8 +10,9 @@ import TigerFrame
 data Externa = Runtime | Propia
     deriving Show
 
-type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
--- type FunEntry = (Level, Label, [Tipo], Tipo, Bool)
+-- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
+-- TODO: Cambiamos el Unique por Level a propósito?
+type FunEntry = (Level, Label, [Tipo], Tipo, Externa)
 
 
 type ValEntry = (Tipo, Access, Int)

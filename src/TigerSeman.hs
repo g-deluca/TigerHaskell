@@ -117,6 +117,9 @@ depend (NameTy s)    = [s]
 depend (ArrayTy s)   = [s]
 depend (RecordTy ts) = concatMap (depend . snd) ts
 
+determineIfProc :: Tipo -> IsProc
+determineIfProc TUnit = IsProc
+determineIfProc _ = IsFun
 
 -- | Función auxiliar que chequea cuales son los tipos
 -- comparables.
@@ -236,16 +239,26 @@ fromTy _ = P.error "no debería haber una definición de tipos en los args..."
 --   técnica conocida en la literatura de Haskell conocida como [Tying the
 --   Knot](https://wiki.haskell.org/Tying_the_Knot)
 ----------------------------------------
--- ** transDecs :: (MemM w, Manticore w) => [Dec] -> w a -> w a
-transDecs :: Manticore w => [Dec] -> w a -> w a
+transDecs :: (MemM w, Manticore w) => [Dec] -> w (BExp, Tipo) -> w ([BExp], Tipo)
+-- Cambiamos el tipo porque ahora tenemos que ir acumulando las expresiones intermedias
+-- de las variables. Antes sólo necesitábamos el |Tipo| que devolvía la computación que
+-- recibe como argumento.
 --
 ----------------------------------------
 -- Caso base.
-transDecs [] m                               = m
+transDecs [] m                               = do
+  -- Computamos m
+  (bexp, tipo) <- m
+  -- Devolvemos el ci dentro de una lista para poder appendearlo a los
+  -- códigos intermedios de las variables que aparecieron en la declaración
+  return ([bexp], tipo)
+
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertValV|
 transDecs ((VarDec nm escap t init p): xs) m = do
-  ((), tipo_init) <- transExp init
+  (bexp_init, tipo_init) <- transExp init
+  access <- allocLocal escap
+  level <- getActualLevel
   -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
   -- las declaraciones.
   when (equivTipo tipo_init TUnit)
@@ -253,30 +266,34 @@ transDecs ((VarDec nm escap t init p): xs) m = do
   case t of
     Just ty_t -> do
       tipo_t <- flip addpos p $ getTipoT ty_t
-      -- TODO: Revisar bien el caso de los records
       if (equivTipo tipo_init tipo_t)
-        then (insertValV nm tipo_t (transDecs xs m))
+        then do
+          (bexp_list, tipo) <- (insertValV nm  (tipo_t, access, level) (transDecs xs m))
+          return (bexp_init:bexp_list, tipo)
         else errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_init tipo_t
     Nothing -> do
       -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
       when (tipo_init == TNil)
            (errorTiposGeneric p "No se permite *nil* como valor inicial sin explicitar el tipo. " nm)
-      insertValV nm tipo_init (transDecs xs m)
+      -- Aumentamos el entorno con la nueva variable y seguimos computando
+      (bexp_list, tipo) <- insertValV nm (tipo_init, access, level) (transDecs xs m)
+      -- Del resultado que obtuvimos de seguir computando en un entorno aumentado:
+      --   1) Conservamos el tipo que nos devolvió
+      --   2) Agregamos el código intermedio de esta variable a la lista de códigos intermedios
+      return (bexp_init:bexp_list, tipo)
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertFunV| Recuerden
 -- viene una lista de declaración de funciones, todas se toman como mutuamente
 -- recursivas así que tendrán que hacer un poco más de trabajo.
 -- fs ::[(Nombre [(Symbol, Escapa, Ty) -- Tipo escrito], Maybe Symbol -- Tipo de retorno, Exp -- Body, Pos)]
 transDecs (FunctionDec fs : xs) m =
-  -- TODO: Revisar que no haya nombres repetidos
-  -- insertFunV :: Symbol -> FunEntry -> w a -> w a
-  -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
   let
     repeatedNames names =
       names List.\\ (Set.toList (Set.fromList names))
+
     insert_headers [] m = m
     insert_headers as@((nm, args, mty, _body, p):fs) m =  do
-      uniq <- mkUnique
+      level <- topLevel
       tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
       let func_names = List.map (\(nm, _, _, _, _) -> nm) as
       let rep_names = repeatedNames func_names
@@ -288,24 +305,30 @@ transDecs (FunctionDec fs : xs) m =
       case mty of
         Just s -> do
           tipo_s <- flip addpos p $ getTipoT s
-          insertFunV nm (uniq, nm, tipo_args, tipo_s, Propia) (insert_headers fs m)
+          insertFunV nm (level, nm, tipo_args, tipo_s, Propia) (insert_headers fs m)
         Nothing ->
-          insertFunV nm (uniq, nm, tipo_args, TUnit, Propia) (insert_headers fs m)
+          insertFunV nm (level, nm, tipo_args, TUnit, Propia) (insert_headers fs m)
 
     insert_args [] m = m
-    insert_args ((nm, tipo):args) m = do
-      insertValV nm tipo (insert_args args m)
+    insert_args ((nm, tipo, escapa):args) m = do
+      access <- allocArg escapa
+      level <- getActualLevel
+      insertValV nm (tipo, access, level) (insert_args args m)
 
     insert_bodies [] m = m
     insert_bodies ((nm, args, _mty, body, p):fs) m = do
-      tipo_args <- mapM (\(arg_nm, _, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo))) args
-      ((), tipo_body) <- insert_args tipo_args (transExp body)
-      -- Chequeamos que tipo_body coincida con el declarado
-      (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
-      unless (equivTipo tipo_nm tipo_body)
-             (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
+      lvl <- topLevel
+      new_lvl = newLevel lvl nm $ List.map (\(_, escapa, _) -> escapa) args
+      envFunctionDec new_lvl $ do
+        tipo_args <- mapM (\(arg_nm, escapa, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo, escapa))) args
+        (bexp_body, tipo_body) <- insert_args tipo_args (transExp body)
+        -- Chequeamos que tipo_body coincida con el declarado
+        (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
+        unless (equivTipo tipo_nm tipo_body)
+               (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
+        -- TODO: le estamos pasando el lvl correcto?
+        functionDec bexp_body new_lvl (determineIfProc tipo_nm)
       insert_bodies fs m
-
   in insert_headers fs (insert_bodies fs (transDecs xs m))
 
 
