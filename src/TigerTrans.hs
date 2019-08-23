@@ -15,7 +15,7 @@ import           TigerAbs                       ( Escapa(..) )
 import qualified TigerAbs                      as Abs
 import           TigerErrores
 import           TigerFrame                    as F
-import           TigerSres                      ( Externa(..) )
+-- import           TigerSres                      ( Externa(..) )
 import           TigerSymbol                   as T
 import           TigerTemp
 import           TigerTree
@@ -33,6 +33,9 @@ import           Debug.Trace
 
 -- | Reexportamos el tipo de Fragmentos provenientes de TigerTrans.
 type TransFrag = Frag
+
+data Externa = Runtime | Propia
+    deriving Show
 
 -- | Tipo de datos representando si es un procedimiento o una función
 data IsProc = IsProc | IsFun

@@ -49,7 +49,7 @@ class (Demon w, Monad w, UniqueGenerator w) => Manticore w where
   -- | Inserta una Función al entorno
     insertFunV :: Symbol -> FunEntry -> w a -> w a
   -- | Inserta una Variable de sólo lectura al entorno
-    insertVRO :: Symbol -> w a -> w a
+    insertVRO :: Symbol -> Int -> Escapa -> w a -> w a
   -- | Inserta una variable de tipo al entorno
     insertTipoT :: Symbol -> Tipo -> w a -> w a
   -- | Busca una función en el entorno
@@ -318,7 +318,7 @@ transDecs (FunctionDec fs : xs) m =
     insert_bodies [] m = m
     insert_bodies ((nm, args, _mty, body, p):fs) m = do
       lvl <- topLevel
-      new_lvl = newLevel lvl nm $ List.map (\(_, escapa, _) -> escapa) args
+      let new_lvl = newLevel lvl nm $ List.map (\(_, escapa, _) -> escapa) args
       envFunctionDec new_lvl $ do
         tipo_args <- mapM (\(arg_nm, escapa, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo, escapa))) args
         (bexp_body, tipo_body) <- insert_args tipo_args (transExp body)
@@ -509,23 +509,24 @@ insertRecords ((rName, rTy):recordsTys) allTys m = do
 transExp :: (MemM w, Manticore w) => Exp -> w (BExp , Tipo)
 -- transExp :: (Manticore w) => Exp -> w (() , Tipo)
 transExp (VarExp v p) = addpos (transVar v) p
-transExp UnitExp{} = return (unitExp, TUnit) -- ** fmap (,TUnit) unitExp
-transExp NilExp{} = return (nilExp, TNil) -- ** fmap (,TNil) nilExp
-transExp (IntExp i _) = return (intExp i, TInt RW) -- ** fmap (,TInt RW) (intExp i)
-transExp (StringExp s _) = return (stringExp (pack s) , TString) -- ** fmap (,TString) (stringExp (pack s))
+transExp UnitExp{} = fmap (,TUnit) unitExp
+transExp NilExp{} = fmap (,TNil) nilExp
+transExp (IntExp i _) = fmap (,TInt RW) (intExp i)
+transExp (StringExp s _) = fmap (,TString) (stringExp (pack s))
 transExp (CallExp nm args p) = do
   (lvl, _, tipos_params, tipo_nm, externa) <- addpos (getTipoFunV nm) p
-  (bexp_args, tipos_args) <- mapM transExp args
-
+  args' <- mapM transExp args
+  let tipos_args = List.map snd args'
+      bexp_args = List.map fst args'
   -- Comparamos que los tipos declarados coincidan con el tipo de los argumentos recibidos.
   -- Nos inventamos unas tuplas para usar la función dada 'cmpZip'
   flip addpos p $
     cmpZip
       (P.map (\tipo -> (TigerSymbol.empty, tipo)) tipos_params)
-      (P.map (\ ((), tipo) -> (TigerSymbol.empty, tipo, 0)) tipos_args)
+      (P.map (\tipo -> (TigerSymbol.empty, tipo, 0)) tipos_args)
 
   --  callExp :: Label -> Externa -> IsProc -> Level -> [BExp] -> w BExp
-  let bexp_call = callExp nm externa (determineIfProc tipo_nm) lvl bexp_args
+  bexp_call <- callExp nm externa (determineIfProc tipo_nm) lvl bexp_args
   -- Si llegamos a este punto, no hay errores de tipo, entonces devolvemos 'tipo_nm'
   return (bexp_call, tipo_nm)
 
@@ -535,34 +536,41 @@ transExp (CallExp nm args p) = do
 transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
         (bexp_el , el) <- transExp el'
         (bexp_er, er) <- transExp er'
-            
+        
+        bexp_int <- binOpIntExp bexp_el oper bexp_er
+        bexp_int_rel <- binOpIntRelExp bexp_el oper bexp_er
         case oper of
-          EqOp -> if tiposComparables el er EqOp then blackOps binOpIntExp el er
+          EqOp -> if tiposComparables el er EqOp then blackOps bexp_int el er
                   else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
-          NeqOp -> if tiposComparables el er NeqOp then blackOps binOpIntExp el er
+          NeqOp -> if tiposComparables el er NeqOp then blackOps bexp_int el er
                   else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
           -- Los unifico en esta etapa porque solo chequeamos los tipos, en la próxima
           -- tendrán que hacer algo más interesante.
-          PlusOp -> oOps binOpIntExp el er
-          MinusOp -> oOps binOpIntExp el er
-          TimesOp -> oOps binOpIntExp el er
-          DivideOp -> oOps binOpIntExp el er
-          LtOp -> oOps binOpIntRelExp el er
-          LeOp -> oOps binOpIntRelExp el er
-          GtOp -> oOps binOpIntRelExp el er
-          GeOp -> oOps binOpIntRelExp el er
-          where oOps toBexpFun l r = if equivTipo l r -- Chequeamos que son el mismo tipo
+          PlusOp -> oOps bexp_int el er
+          MinusOp -> oOps bexp_int el er
+          TimesOp -> oOps bexp_int el er
+          DivideOp -> oOps bexp_int el er
+          LtOp -> oOps bexp_int_rel el er
+          LeOp -> oOps bexp_int_rel el er
+          GtOp -> oOps bexp_int_rel el er
+          GeOp -> oOps bexp_int_rel el er
+          where oOps bexp l r = if equivTipo l r -- Chequeamos que son el mismo tipo
                               && equivTipo l (TInt RO) -- y que además es Entero. [Equiv Tipo es una rel de equiv]
-                          then return (toBexpFun bexp_el oper bexp_er , TInt RO)
+                          then return (bexp, TInt RO)
                           else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
-                blackOps l r = if equivTipo l r -- Chequeamos que son el mismo tipo
-                          then return (toBexpFun bexp_el oper bexp_er, TInt RO)
+                blackOps bexp l r = if equivTipo l r -- Chequeamos que son el mismo tipo
+                          then return (bexp, TInt RO)
                           else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
 
 -- | Recordemos que 'RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp'
 -- Donde el primer argumento son los campos del records, y el segundo es
 -- el texto plano de un tipo (que ya debería estar definido). Una expresión
 -- de este tipo está creando un nuevo record.
+
+-- recordExp :: [(BExp,Int)]  -> w BExp
+-- TRecord [(Symbol, Tipo, Posicion)] Unique
+-- RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp
+
 transExp(RecordExp flds rt p) =
   addpos (getTipoT rt) p >>= \case -- Buscamos en la tabla que tipo es 'rt', y hacemos un análisis por casos.
     trec@(TRecord fldsTy _) -> -- ':: TRecord [(Symbol, Tipo, Int)] Unique'
@@ -575,6 +583,8 @@ transExp(RecordExp flds rt p) =
         -- Lo que resta es chequear que los tipos  sean los mismos, entre los que el programador dio
         -- y los que tienen que ser según la definición del record.
         let ordered = List.sortBy (Ord.comparing fst) fldsTys
+            -- flds_bexp = List.map (\(_, (cir, _)) -> cir) ordered
+        -- bexp <- recordExp flds_bexp
         -- asumiendo que no nos interesan como el usuario ingresa los campos los ordenamos.
         _ <- cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
         return ((), trec) -- Si todo fue bien devolvemos trec.
@@ -588,7 +598,8 @@ transExp(SeqExp es p) = do
 -- ^ Notar que esto queda así porque no nos interesan los
 -- units intermedios. Eventualmente vamos a coleccionar los códigos intermedios y se verá algo similar a:
       es' <- mapM transExp es
-      return ( seqExp es', snd $ last es')
+      bexp <- seqExp (List.map fst es')
+      return (bexp, snd $ last es')
 transExp(AssignExp var val p) = do
   (bexp_var, tipo_var) <- transVar var
   -- Primero, revisamos que la variable no sea de sólo lectura
@@ -604,56 +615,66 @@ transExp(AssignExp var val p) = do
             (errorTiposMsg p ("En la asignacion de " ++ (show var) ++ ". ") tipo_var tipo_val)
   -- Si son iguales devolvemos cualquiera de los dos
   -- La asignación no devuelve valor. Ver página 518 del libro.
-  return (assignExp bexp_var bexp_val, TUnit)
+  bexp <- assignExp bexp_var bexp_val
+  return (bexp, TUnit)
   
 transExp(IfExp co th Nothing p) = do
         -- ** (ccond , co') <- transExp co
   -- Analizamos el tipo de la condición
-        (_ , co') <- transExp co
+        (bexp_co , co') <- transExp co
   -- chequeamos que sea un entero.
         unless (equivTipo co' TBool) $ errorTiposMsg p "En la condicion del if. " TBool co'
         -- ** (cth , th') <- transExp th
   -- Analizamos el tipo del branch.
-        (() , th') <- transExp th
+        (bexp_th , th') <- transExp th
   -- chequeamos que sea de tipo Unit.
         unless (equivTipo th' TUnit) $ errorTiposMsg p "En el branch del if. " TUnit th'
   -- Si todo fue bien, devolvemos que el tipo de todo el 'if' es de tipo Unit.
-        return (() , TUnit)
+        return (ifThenExp bexp_co bexp_th , TUnit)
 transExp(IfExp co th (Just el) p) = do
-  (_ , condType) <- transExp co
+  (bexp_co , condType) <- transExp co
   unless (equivTipo condType TBool) (errorTiposMsg p "En la condicion del if. " TBool condType)
-  (_, ttType) <- transExp th
-  (_, ffType) <- transExp el
+  (bexp_th, ttType) <- transExp th
+  (bexp_el, ffType) <- transExp el
   C.unlessM (tiposIguales ttType ffType)
             (errorTiposMsg p "El tipo de los branches del if no coinciden. " ttType ffType)
   -- Si todo fue bien devolvemos el tipo de una de las branches.
-  return ((), ttType)
+  return (ifThenElseExp bexp_co bexp_th bexp_el, ttType)
 transExp(WhileExp co body p) = do
-  (_ , coTy) <- transExp co
+  (bexp_co , coTy) <- transExp co
   unless (equivTipo coTy TBool) $ errorTiposMsg p "Error en la condicion del While. " TBool coTy
-  (_ , boTy) <- transExp body
+  preWhileforExp
+  (bexp_body , boTy) <- transExp body
   unless (equivTipo boTy TUnit) $ errorTiposMsg p "Error en el cuerpo del While. " TUnit boTy
-  return ((), TUnit)
+  bexp <- whileExp bexp_co bexp_body
+  posWhileforExp
+  return (bexp, TUnit)
 transExp(ForExp nv mb lo hi bo p) = do
   -- nv es el nombre de la variable que declara el for, mb si escapa o no
   -- lo y hi son lower y upper bound, bo es el body y p es la posición
 
   -- Chequeamos que el límite inferior de la variable sea una expresión de tipo entero
-  (_, tipo_lo) <- transExp lo
+  (bexp_lo, tipo_lo) <- transExp lo
   unless (equivTipo tipo_lo (TInt RW))
          (errorTiposMsg p "Error en la expresion 'lo' del For. " (TInt RW) tipo_lo)
   -- Ahora lo mismo por con límite superior
-  (_, tipo_hi) <- transExp hi
+  (bexp_hi, tipo_hi) <- transExp hi
   unless (equivTipo tipo_hi (TInt RW))
          (errorTiposMsg p "Error en la expresión 'hi' del For. " (TInt RW) tipo_hi)
+  preWhileforExp
+  init_val <- allocLocal mb
+  lvl <- getActualLevel
+  init_var <- simpleVar init_val 0 -- ?????
   -- Acá deberíamos chequear que lo < hi. Pero para eso necesitamos el código intermedio.
   -- TODO: En la próxima etapa ^. (Ver Tiger Language Reference Manual)
   -- Chequeamos que el cuerpo del for no produzca valor. (Ver Tiger Language Reference Manual)
-  (_ , tipo_bo) <- insertVRO nv $ transExp bo
+  (bexp_bo , tipo_bo) <- insertVRO nv lvl mb $ transExp bo
   unless (equivTipo tipo_bo TUnit)
          (errorTiposMsg p "El cuerpo del For devuelve un valor. " TUnit tipo_bo)
+  bexp <- forExp bexp_lo bexp_hi init_var 
+  posWhileforExp
   -- Si llegamos hasta acá está todo bien. Como el for no produce valores, devolvemos TUnit.
-  return ((), TUnit)
+  return (bexp, TUnit)
 
 transExp(LetExp dcs body p) = transDecs dcs (transExp body)
 transExp(BreakExp p) = return ((), TUnit)
@@ -744,11 +765,12 @@ instance Manticore Monada where
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return res
 
-    insertVRO sym m = do
+    insertVRO sym lvl escapa m = do
       -- | Guardamos el estado actual
       oldEst <- get
+      lvl <- getActualLevel
       -- | Insertamos la variable al entorno (sobrescribiéndolo)
-      put (oldEst{ vEnv = M.insert sym (Var (TInt RO)) (vEnv oldEst) })
+      put (oldEst{ vEnv = M.insert sym (Var ((TInt RO), lvl, escapa)) (vEnv oldEst) })
       -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
       res <- m
       -- | Volvemos a poner el entorno viejo
