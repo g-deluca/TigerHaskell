@@ -11,7 +11,7 @@ import           TigerTopSort
 -- Segunda parte imports:
 import           TigerTemp
 import           TigerTrans
-
+import           TigerFrame                 (Access)
 -- Monads
 import qualified Control.Conditional        as C
 import           Control.Monad
@@ -49,7 +49,7 @@ class (Demon w, Monad w, UniqueGenerator w) => Manticore w where
   -- | Inserta una Función al entorno
     insertFunV :: Symbol -> FunEntry -> w a -> w a
   -- | Inserta una Variable de sólo lectura al entorno
-    insertVRO :: Symbol -> Int -> Escapa -> w a -> w a
+    insertVRO :: Symbol -> Access -> Int -> w a -> w a
   -- | Inserta una variable de tipo al entorno
     insertTipoT :: Symbol -> Tipo -> w a -> w a
   -- | Busca una función en el entorno
@@ -582,12 +582,15 @@ transExp(RecordExp flds rt p) =
         -- como resultado tenemos 'fldsTys :: (Symbol, ( CIr , Tipo))'
         -- Lo que resta es chequear que los tipos  sean los mismos, entre los que el programador dio
         -- y los que tienen que ser según la definición del record.
-        let ordered = List.sortBy (Ord.comparing fst) fldsTys
-            -- flds_bexp = List.map (\(_, (cir, _)) -> cir) ordered
-        -- bexp <- recordExp flds_bexp
+        let ordered = List.sortBy (Ord.comparing fst) fldsTys -- :: (Symbol, (Bexp, Tipo))
+            flds_bexp = List.map (fst . snd) ordered 
+            flds_bexp' = zip flds_bexp [0..] -- Como está ordenado, le doy estos enteros 
+
         -- asumiendo que no nos interesan como el usuario ingresa los campos los ordenamos.
         _ <- cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
-        return ((), trec) -- Si todo fue bien devolvemos trec.
+        
+        bexp_record <- recordExp flds_bexp'
+        return (bexp_record, trec) -- Si todo fue bien devolvemos trec.
     rTy -> (errorTiposGeneric
             p
             ("No se puede crear un record en un objeto de tipo: " ++ show rTy)
@@ -629,8 +632,9 @@ transExp(IfExp co th Nothing p) = do
         (bexp_th , th') <- transExp th
   -- chequeamos que sea de tipo Unit.
         unless (equivTipo th' TUnit) $ errorTiposMsg p "En el branch del if. " TUnit th'
+        bexp <- ifThenExp bexp_co bexp_th
   -- Si todo fue bien, devolvemos que el tipo de todo el 'if' es de tipo Unit.
-        return (ifThenExp bexp_co bexp_th , TUnit)
+        return (bexp , TUnit)
 transExp(IfExp co th (Just el) p) = do
   (bexp_co , condType) <- transExp co
   unless (equivTipo condType TBool) (errorTiposMsg p "En la condicion del if. " TBool condType)
@@ -638,8 +642,9 @@ transExp(IfExp co th (Just el) p) = do
   (bexp_el, ffType) <- transExp el
   C.unlessM (tiposIguales ttType ffType)
             (errorTiposMsg p "El tipo de los branches del if no coinciden. " ttType ffType)
+  bexp <- ifThenElseExp bexp_co bexp_th bexp_el
   -- Si todo fue bien devolvemos el tipo de una de las branches.
-  return (ifThenElseExp bexp_co bexp_th bexp_el, ttType)
+  return (bexp, ttType)
 transExp(WhileExp co body p) = do
   (bexp_co , coTy) <- transExp co
   unless (equivTipo coTy TBool) $ errorTiposMsg p "Error en la condicion del While. " TBool coTy
@@ -668,33 +673,39 @@ transExp(ForExp nv mb lo hi bo p) = do
   -- Acá deberíamos chequear que lo < hi. Pero para eso necesitamos el código intermedio.
   -- TODO: En la próxima etapa ^. (Ver Tiger Language Reference Manual)
   -- Chequeamos que el cuerpo del for no produzca valor. (Ver Tiger Language Reference Manual)
-  (bexp_bo , tipo_bo) <- insertVRO nv lvl mb $ transExp bo
+  (bexp_bo , tipo_bo) <- insertVRO nv init_val lvl $ transExp bo
   unless (equivTipo tipo_bo TUnit)
          (errorTiposMsg p "El cuerpo del For devuelve un valor. " TUnit tipo_bo)
-  bexp <- forExp bexp_lo bexp_hi init_var 
+  bexp <- forExp bexp_lo bexp_hi init_var  bexp_bo
   posWhileforExp
   -- Si llegamos hasta acá está todo bien. Como el for no produce valores, devolvemos TUnit.
   return (bexp, TUnit)
 
-transExp(LetExp dcs body p) = transDecs dcs (transExp body)
-transExp(BreakExp p) = return ((), TUnit)
+transExp(LetExp dcs body p) = do
+  (bexp_decs, tipo) <- transDecs dcs (transExp body)
+  bexp <- letExp (init bexp_decs) (last bexp_decs)
+  return (bexp, tipo)
+transExp(BreakExp p) = do
+  bexp <- breakExp
+  return (bexp, TUnit)
 transExp(ArrayExp sn cant init p) = do
   tipo_sn <- flip addpos p $ getTipoT sn
   -- Primero, miramos que sn sea efectivamente un arreglo
   case tipo_sn of
     TArray tipo_elem u -> do
-      (_, tipo_cant) <- transExp cant
+      (bexp_size, tipo_cant) <- transExp cant
       -- Después me fijo que el valor ingresado para indicar la longitud sea de tipo
       -- entero. Comparo con 'RO' porque \equivTipo\ no distingue entre RO y RW.
       unless (equivTipo tipo_cant (TInt RO))
              (errorTiposMsg p "En la longitud del array. " (TInt RO) tipo_cant )
-      (_, tipo_init) <- transExp init
+      (bexp_init, tipo_init) <- transExp init
       -- Por último nos fijamos que el tipo de los elementos de arrego y el de la
       -- expresión inicial coincidan
       C.unlessM (tiposIguales tipo_elem tipo_init)
                 (errorTiposMsg p ("En los elementos del arreglo " ++ unpack sn ++ ". ") tipo_init tipo_elem)
       -- Si llegamo' a esta punto este punto está todo bien
-      return ((), TArray tipo_elem u)
+      bexp <- arrayExp bexp_size bexp_init
+      return (bexp, TArray tipo_elem u)
     notArrTy -> (errorTiposGeneric
                   p
                   ("La expresion de tipo " ++ show notArrTy ++ " no es un arreglo. ")
@@ -765,12 +776,11 @@ instance Manticore Monada where
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return res
 
-    insertVRO sym lvl escapa m = do
+    insertVRO sym acc lvl m = do
       -- | Guardamos el estado actual
       oldEst <- get
-      lvl <- getActualLevel
       -- | Insertamos la variable al entorno (sobrescribiéndolo)
-      put (oldEst{ vEnv = M.insert sym (Var ((TInt RO), lvl, escapa)) (vEnv oldEst) })
+      put (oldEst{ vEnv = M.insert sym (Var ((TInt RO), acc, lvl)) (vEnv oldEst) })
       -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
       res <- m
       -- | Volvemos a poner el entorno viejo

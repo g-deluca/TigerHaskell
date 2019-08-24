@@ -31,7 +31,7 @@ import           Data.Ord                hiding ( EQ
 
 import           Debug.Trace
 
--- | Reexportamos el tipo de Fragmentos provenientes de TigerTrans.
+-- | Reexportamos el tipo de Fragmentos provenientes de TigerFrame.
 type TransFrag = Frag
 
 data Externa = Runtime | Propia
