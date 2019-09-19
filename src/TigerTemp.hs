@@ -30,6 +30,6 @@ instance (Monad p , UniqueGenerator p) => TLGenerator p where
   newTemp = detgenTemp <$> mkUnique
   newLabel = detgenLabel <$> mkUnique
 
-instance (MonadTrans t, TLGenerator m, Monad m) => TLGenerator (t m) where
-  newTemp = lift newTemp
-  newLabel = lift newLabel
+-- instance (MonadTrans t, TLGenerator m, Monad m) => TLGenerator (t m) where
+--   newTemp = lift newTemp
+--   newLabel = lift newLabel

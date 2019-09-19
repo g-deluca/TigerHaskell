@@ -284,6 +284,9 @@ instance (MemM w) => IrGen w where
     -- simpleVar :: Access -> Int -> w BExp
     simpleVar acc level = do
       actual_level <- getActualLevel
+      -- trace ("Access" ++ show acc) (return ())
+      -- trace ("Actual level" ++ show actual_level) (return ())
+      -- trace ("Level" ++ show level) (return ())
       return $ Ex (F.exp acc (actual_level - level))
     varDec acc = do { i <- getActualLevel; simpleVar acc i}
     unitExp = return $ Ex (Const 0)

@@ -11,7 +11,7 @@ import           TigerTopSort
 -- Segunda parte imports:
 import           TigerTemp
 import           TigerTrans
-import           TigerFrame                 (Access)
+import           TigerFrame                 (Access, Frag)
 -- Monads
 import qualified Control.Conditional        as C
 import           Control.Monad
@@ -533,34 +533,40 @@ transExp (CallExp nm args p) = do
 -- REVISAR:
 -- para no hacer mucho lio, paso una funcion como arg a oOps o blackOps dependiendo si es OpInt o OpRelInt
 -- sino habría que separar el case oper of en si es de Rel o no
-transExp (OpExp el' oper er' p) = do -- Esta va /gratis/
-        (bexp_el , el) <- transExp el'
-        (bexp_er, er) <- transExp er'
-        
-        bexp_int <- binOpIntExp bexp_el oper bexp_er
-        bexp_int_rel <- binOpIntRelExp bexp_el oper bexp_er
+transExp (OpExp el oper er p) = do -- Esta va /gratis/
+        (_, l) <- transExp el
+        (_, r) <- transExp er
+
         case oper of
-          EqOp -> if tiposComparables el er EqOp then blackOps bexp_int el er
+          EqOp -> if tiposComparables l r EqOp then blackOps binOpIntRelExp el er
                   else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
-          NeqOp -> if tiposComparables el er NeqOp then blackOps bexp_int el er
+          NeqOp -> if tiposComparables l r NeqOp then blackOps binOpIntRelExp el er
                   else addpos (derror (pack "Error de tipos | Tipos no comparables.")) p
           -- Los unifico en esta etapa porque solo chequeamos los tipos, en la próxima
           -- tendrán que hacer algo más interesante.
-          PlusOp -> oOps bexp_int el er
-          MinusOp -> oOps bexp_int el er
-          TimesOp -> oOps bexp_int el er
-          DivideOp -> oOps bexp_int el er
-          LtOp -> oOps bexp_int_rel el er
-          LeOp -> oOps bexp_int_rel el er
-          GtOp -> oOps bexp_int_rel el er
-          GeOp -> oOps bexp_int_rel el er
-          where oOps bexp l r = if equivTipo l r -- Chequeamos que son el mismo tipo
-                              && equivTipo l (TInt RO) -- y que además es Entero. [Equiv Tipo es una rel de equiv]
-                          then return (bexp, TInt RO)
-                          else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
-                blackOps bexp l r = if equivTipo l r -- Chequeamos que son el mismo tipo
-                          then return (bexp, TInt RO)
-                          else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
+          PlusOp -> oOps binOpIntExp el er
+          MinusOp -> oOps binOpIntExp el er
+          TimesOp -> oOps binOpIntExp el er
+          DivideOp -> oOps binOpIntExp el er
+          LtOp -> oOps binOpIntRelExp el er
+          LeOp -> oOps binOpIntRelExp el er
+          GtOp -> oOps binOpIntRelExp el er
+          GeOp -> oOps binOpIntRelExp el er
+          where oOps bfun el' er' = do
+                  (bexp_el , l) <- transExp el'
+                  (bexp_er, r) <- transExp er'
+                  bexp <- bfun bexp_el oper bexp_er
+                  if equivTipo l r -- Chequeamos que son el mismo tipo
+                        && equivTipo l (TInt RO) -- y que además es Entero. [Equiv Tipo es una rel de equiv]
+                    then return (bexp, TInt RO)
+                    else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
+                blackOps bfun el' er' = do
+                  (bexp_el , l) <- transExp el'
+                  (bexp_er, r) <- transExp er'
+                  bexp <- bfun bexp_el oper bexp_er
+                  if equivTipo l r -- Chequeamos que son el mismo tipo
+                    then return (bexp, TInt RO)
+                    else addpos (derror (pack "Error de tipos | Tipos no equivalentes.")) p
 
 -- | Recordemos que 'RecordExp :: [(Symbol, Exp)] -> Symbol -> Pos -> Exp'
 -- Donde el primer argumento son los campos del records, y el segundo es
@@ -583,12 +589,12 @@ transExp(RecordExp flds rt p) =
         -- Lo que resta es chequear que los tipos  sean los mismos, entre los que el programador dio
         -- y los que tienen que ser según la definición del record.
         let ordered = List.sortBy (Ord.comparing fst) fldsTys -- :: (Symbol, (Bexp, Tipo))
-            flds_bexp = List.map (fst . snd) ordered 
-            flds_bexp' = zip flds_bexp [0..] -- Como está ordenado, le doy estos enteros 
+            flds_bexp = List.map (fst . snd) ordered
+            flds_bexp' = zip flds_bexp [0..] -- Como está ordenado, le doy estos enteros
 
         -- asumiendo que no nos interesan como el usuario ingresa los campos los ordenamos.
         _ <- cmpZip ( (\(s,(c,t)) -> (s,t)) <$> ordered) fldsTy -- Demon corta la ejecución.
-        
+
         bexp_record <- recordExp flds_bexp'
         return (bexp_record, trec) -- Si todo fue bien devolvemos trec.
     rTy -> (errorTiposGeneric
@@ -620,7 +626,7 @@ transExp(AssignExp var val p) = do
   -- La asignación no devuelve valor. Ver página 518 del libro.
   bexp <- assignExp bexp_var bexp_val
   return (bexp, TUnit)
-  
+
 transExp(IfExp co th Nothing p) = do
         -- ** (ccond , co') <- transExp co
   -- Analizamos el tipo de la condición
@@ -669,7 +675,7 @@ transExp(ForExp nv mb lo hi bo p) = do
   preWhileforExp
   init_val <- allocLocal mb
   lvl <- getActualLevel
-  init_var <- simpleVar init_val 0 -- ?????
+  init_var <- simpleVar init_val lvl -- TODO: Revisar si va actual level o el de la variable
   -- Acá deberíamos chequear que lo < hi. Pero para eso necesitamos el código intermedio.
   -- TODO: En la próxima etapa ^. (Ver Tiger Language Reference Manual)
   -- Chequeamos que el cuerpo del for no produzca valor. (Ver Tiger Language Reference Manual)
@@ -714,7 +720,14 @@ transExp(ArrayExp sn cant init p) = do
 
 
 -- Un ejemplo de estado que alcanzaría para realizar todas la funciones es:
-data Estado = Est {vEnv :: M.Map Symbol EnvEntry, tEnv :: M.Map Symbol Tipo}
+data Estado = Est {
+  vEnv :: M.Map Symbol EnvEntry,
+  tEnv :: M.Map Symbol Tipo,
+  nlevel :: Int,
+  level :: [Level],
+  salida :: [Maybe Label],
+  frags :: [Frag]
+  }
     deriving Show
 -- data EstadoG = G {vEnv :: [M.Map Symbol EnvEntry], tEnv :: [M.Map Symbol Tipo]}
 --     deriving Show
@@ -726,17 +739,21 @@ initConf :: Estado
 initConf = Est
            { tEnv = M.insert (pack "int") (TInt RW) (M.singleton (pack "string") TString)
            , vEnv = M.fromList
-                    [(pack "print", Func (1,pack "print",[TString], TUnit, Runtime))
-                    ,(pack "flush", Func (1,pack "flush",[],TUnit, Runtime))
-                    ,(pack "getchar",Func (1,pack "getchar",[],TString,Runtime))
-                    ,(pack "ord",Func (1,pack "ord",[TString],TInt RW,Runtime))
-                    ,(pack "chr",Func (1,pack "chr",[TInt RW],TString,Runtime))
-                    ,(pack "size",Func (1,pack "size",[TString],TInt RW,Runtime))
-                    ,(pack "substring",Func (1,pack "substring",[TString,TInt RW, TInt RW],TString,Runtime))
-                    ,(pack "concat",Func (1,pack "concat",[TString,TString],TString,Runtime))
-                    ,(pack "not",Func (1,pack "not",[TBool],TBool,Runtime))
-                    ,(pack "exit",Func (1,pack "exit",[TInt RW],TUnit,Runtime))
+                    [(pack "print", Func (outermost, pack "print",[TString], TUnit, Runtime))
+                    ,(pack "flush", Func (outermost,pack "flush",[],TUnit, Runtime))
+                    ,(pack "getchar",Func (outermost ,pack "getchar",[],TString,Runtime))
+                    ,(pack "ord",Func (outermost,pack "ord",[TString],TInt RW,Runtime))
+                    ,(pack "chr",Func (outermost,pack "chr",[TInt RW],TString,Runtime))
+                    ,(pack "size",Func (outermost,pack "size",[TString],TInt RW,Runtime))
+                    ,(pack "substring",Func (outermost,pack "substring",[TString,TInt RW, TInt RW],TString,Runtime))
+                    ,(pack "concat",Func (outermost,pack "concat",[TString,TString],TString,Runtime))
+                    ,(pack "not",Func (outermost,pack "not",[TBool],TBool,Runtime))
+                    ,(pack "exit",Func (outermost,pack "exit",[TInt RW],TUnit,Runtime))
                     ]
+           , nlevel = -1
+           , level = [outermost]
+           , salida = []
+           , frags = []
            }
 
 -- Utilizando alguna especie de run de la monada definida, obtenemos algo así
@@ -828,13 +845,57 @@ instance Manticore Monada where
       s <- get
       trace (show (tEnv s)) m
 
-runMonada :: Monada ((), Tipo) -> StGen (Either Symbol ((), Tipo))
+instance MemM Monada where
+    upLvl = do
+      st <- get
+      put $ st { nlevel = nlevel st + 1 }
+    downLvl = do
+      st <- get
+      put $ st { nlevel = nlevel st - 1 }
+    -- -- | Salida management.
+    -- -- Esta etiqueta la necesitamos porque es la que nos va permitir saltar a la
+    -- -- salida de un while (Ver código intermedio de While). Usada en el break.
+    pushSalida label = do
+      st <- get
+      put $ st {salida = label:(salida st)}
+    topSalida = do
+      st <- get
+      return $ head (salida st)
+    popSalida = do
+      st <- get
+      put $ st {salida = tail (salida st)}
+    -- -- | Level management Cont. El nivel en esta etapa es lo que llamamos el
+    -- -- marco de activación virtual o dinámico (no me acuerdo). Pero es lo que
+    -- -- eventualmente va a ser el marco de activación
+    pushLevel lvl = do
+      st <- get
+      put $ st {level = lvl:(level st)}
+    topLevel = do
+      st <- get
+      return $ head (level st)
+    popLevel = do
+      st <- get
+      put $ st {level = tail (level st)}
+    -- -- | Frag management
+    -- -- Básicamente los fragmentos van a ser un efecto lateral de la computación.
+    -- -- Recuerden que los fragmentos son pedazos de código intermedio que se van
+    -- -- a ejecutar. Y estos son un efecto lateral porque todavía no sabemos bien
+    -- -- cómo van a ser ejecutados (eso se decide más adelante)
+    pushFrag frag = do
+      st <- get
+      put $ st {frags = frag:(frags st)}
+    getFrags = do
+      st <- get
+      return $ frags st
+
+
+runMonada :: Monada (BExp, Tipo) -> StGen (Either Symbol (BExp, Tipo))
 runMonada =  flip evalStateT initConf . runExceptT
 
-runSeman :: Exp -> StGen (Either Symbol ((), Tipo))
+runSeman :: Exp -> StGen (Either Symbol (BExp, Tipo))
 runSeman = runMonada . transExp
 
 -- StGen v = State Integer v
 -- newtype State s v = St {runSt :: s -> (v , s)}
-calcularSeman :: Exp -> Either Symbol ((), Tipo)
+calcularSeman :: Exp -> Either Symbol (BExp, Tipo)
 calcularSeman = fst . flip TigerUnique.evalState 0 . runSeman

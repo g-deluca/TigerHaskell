@@ -164,7 +164,7 @@ auxexp 0 = Temp fp
 auxexp n = Mem (Binop Plus (auxexp (n - 1)) (Const fpPrevLev))
 
 exp
-  :: 
+  ::
   -- Acceso de la variable.
      Access
     -- Diferencia entre el nivel que se usa y donde se definió.
