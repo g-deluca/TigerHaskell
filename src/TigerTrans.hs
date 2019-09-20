@@ -381,7 +381,7 @@ instance (MemM w) => IrGen w where
       mlabel <- topSalida
       case mlabel of
         Just label -> return $ Nx $ Jump (Name label) label
-        _ -> internal $ pack "JA! Tincho gato"
+        _ -> derror $ pack "Break fuera de lugar"
     -- seqExp :: [BExp] -> w BExp
     seqExp [] = return $ Nx $ ExpS $ Const 0
     seqExp bes = case last bes of

@@ -10,9 +10,8 @@ import           Tools
 
 main :: IO ()
 main =
-  -- test "./test/test_code/good" (const redfail) (const bluenice) tester "test44.tig"
-  putStrLn "\n==== Orden ====" >>
-  testDir good_loc (testSTDGood tester2) >>
+  -- testGood "./test/test_code/type/" tester  "test51.tig"
+
   putStrLn "\n==== Good loc ====" >>
   testDir good_loc (testSTDGood tester) >>
   putStrLn "\n==== Type Loc ====" >>

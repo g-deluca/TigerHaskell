@@ -1,2 +1,11 @@
 /* error: break out of a loop. */
 if 1 then break
+
+/*
+let
+    var a : int := 4
+	function g (a : int) = if 1 then break
+in
+    g(a)
+end
+*/

@@ -173,5 +173,5 @@ exp
 exp (InFrame k) e = Mem (Binop Plus (auxexp e) (Const k))
   -- Si esta en un registro, directamente damos ese acceso. Por definición el
   -- nivel tendría que ser el mismo, sino hay un error en el calculo de escapes.
-exp (InReg l) c | c == 0    = error "Megaerror en el calculo de escapes?"
+exp (InReg l) c | c /= 0    = error "Megaerror en el calculo de escapes?"
                 | otherwise = Temp l

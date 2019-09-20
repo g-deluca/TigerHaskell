@@ -259,6 +259,8 @@ transDecs ((VarDec nm escap t init p): xs) m = do
   (bexp_init, tipo_init) <- transExp init
   access <- allocLocal escap
   level <- getActualLevel
+  bexp_var <- varDec access
+  bexp_dec <- assignExp bexp_var bexp_init
   -- Si tipo_init es TUnit deberíamos fallar: No se admiten procedimientos en
   -- las declaraciones.
   when (equivTipo tipo_init TUnit)
@@ -269,7 +271,7 @@ transDecs ((VarDec nm escap t init p): xs) m = do
       if (equivTipo tipo_init tipo_t)
         then do
           (bexp_list, tipo) <- (insertValV nm  (tipo_t, access, level) (transDecs xs m))
-          return (bexp_init:bexp_list, tipo)
+          return (bexp_dec:bexp_list, tipo)
         else errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_init tipo_t
     Nothing -> do
       -- Si tipo_init es nil deberíamos fallar: ver página 118 del libro.
@@ -319,6 +321,7 @@ transDecs (FunctionDec fs : xs) m =
     insert_bodies ((nm, args, _mty, body, p):fs) m = do
       lvl <- topLevel
       let new_lvl = newLevel lvl nm $ List.map (\(_, escapa, _) -> escapa) args
+      -- TODO: Está bien hacer esto acá? Quizás debería hacerse antes de procesar los headers
       envFunctionDec new_lvl $ do
         tipo_args <- mapM (\(arg_nm, escapa, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo, escapa))) args
         (bexp_body, tipo_body) <- insert_args tipo_args (transExp body)
@@ -860,7 +863,9 @@ instance MemM Monada where
       put $ st {salida = label:(salida st)}
     topSalida = do
       st <- get
-      return $ head (salida st)
+      case salida st of
+        [] -> derror $ pack "Break fuera de lugar (en outermost level)"
+        _ -> return $ head (salida st)
     popSalida = do
       st <- get
       put $ st {salida = tail (salida st)}
