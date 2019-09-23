@@ -166,6 +166,7 @@ buscarM s ((s', t, p):xs) | s == s' = Just (t, p)
 -- de la variable a la que se está __accediendo__.
 transVar :: (MemM w, Manticore w) => Var -> w (BExp, Tipo)
 transVar (SimpleVar s)      = do
+  lvl <- getActualLevel
   (tipo_s, access, lvl)  <- getTipoValV s -- Nota [1]
   simple_bexp <- simpleVar access lvl
   return (simple_bexp, tipo_s)
@@ -282,7 +283,7 @@ transDecs ((VarDec nm escap t init p): xs) m = do
       -- Del resultado que obtuvimos de seguir computando en un entorno aumentado:
       --   1) Conservamos el tipo que nos devolvió
       --   2) Agregamos el código intermedio de esta variable a la lista de códigos intermedios
-      return (bexp_init:bexp_list, tipo)
+      return (bexp_dec:bexp_list, tipo)
 ----------------------------------------
 -- Aquí veremos brillar la abstracción que tomamos en |insertFunV| Recuerden
 -- viene una lista de declaración de funciones, todas se toman como mutuamente
@@ -322,15 +323,16 @@ transDecs (FunctionDec fs : xs) m =
       lvl <- topLevel
       let new_lvl = newLevel lvl nm $ List.map (\(_, escapa, _) -> escapa) args
       -- TODO: Está bien hacer esto acá? Quizás debería hacerse antes de procesar los headers
-      envFunctionDec new_lvl $ do
+      -- TODO: Revisar que el batch se ponga en el mismo Level
+      envFunctionDec new_lvl ( do
         tipo_args <- mapM (\(arg_nm, escapa, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo, escapa))) args
         (bexp_body, tipo_body) <- insert_args tipo_args (transExp body)
         -- Chequeamos que tipo_body coincida con el declarado
         (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
         unless (equivTipo tipo_nm tipo_body)
-               (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
+                (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
         -- TODO: le estamos pasando el lvl correcto?
-        functionDec bexp_body new_lvl (determineIfProc tipo_nm)
+        functionDec bexp_body new_lvl (determineIfProc tipo_nm))
       insert_bodies fs m
   in insert_headers fs (insert_bodies fs (transDecs xs m))
 
@@ -613,6 +615,7 @@ transExp(SeqExp es p) = do
       bexp <- seqExp (List.map fst es')
       return (bexp, snd $ last es')
 transExp(AssignExp var val p) = do
+  alvl <- getActualLevel
   (bexp_var, tipo_var) <- transVar var
   -- Primero, revisamos que la variable no sea de sólo lectura
   when ( tipo_var == (TInt RO))
@@ -766,9 +769,7 @@ type Monada = ExceptT Symbol (StateT Estado StGen)
 instance Demon Monada where
   -- | 'throwE' de la mónada de excepciones.
   derror =  throwE
-  -- TODO: Parte del estudiante
   adder m s = catchE m (\e -> throwE (append s e))
-  -- adder :: w a -> Symbol -> w a
 instance Manticore Monada where
   -- | A modo de ejemplo esta es una opción de ejemplo de 'insertValV :: Symbol -> ValEntry -> w a -> w'
     insertValV sym ventry m = do
@@ -849,6 +850,9 @@ instance Manticore Monada where
       trace (show (tEnv s)) m
 
 instance MemM Monada where
+    getActualLevel = do
+      st <- get
+      return $ nlevel st
     upLvl = do
       st <- get
       put $ st { nlevel = nlevel st + 1 }

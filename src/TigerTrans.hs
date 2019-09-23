@@ -152,7 +152,6 @@ class (Monad w, TLGenerator w, Demon w) => MemM w where
     -- | Level management
     -- Es un entero que nos indica en qué nivel estamos actualmente.
     getActualLevel :: w Int
-    getActualLevel = getNlvl <$> topLevel
     upLvl :: w ()
     downLvl :: w ()
     -- | Salida management.
@@ -284,9 +283,6 @@ instance (MemM w) => IrGen w where
     -- simpleVar :: Access -> Int -> w BExp
     simpleVar acc level = do
       actual_level <- getActualLevel
-      -- trace ("Access" ++ show acc) (return ())
-      -- trace ("Actual level" ++ show actual_level) (return ())
-      -- trace ("Level" ++ show level) (return ())
       return $ Ex (F.exp acc (actual_level - level))
     varDec acc = do { i <- getActualLevel; simpleVar acc i}
     unitExp = return $ Ex (Const 0)
@@ -571,14 +567,14 @@ instance (MemM w) => IrGen w where
       case op of
         Abs.EqOp ->
           return $ Ex $ Eseq (seq
-           [ExpS $ externalCall "_stringCompare" [estrl, estrr]
-           , Move (Temp t) (Temp rv)
-           ]) (Temp t)
+            [ExpS $ externalCall "_stringCompare" [estrl, estrr]
+            ,Move (Temp t) (Temp rv)
+            ]) (Temp t)
         Abs.NeqOp ->
           return $ Ex $ Eseq (seq
-           [ExpS $ externalCall "_stringCompare" [estrl, estrr]
-           , Move (Temp t) (Temp rv)
-           ]) (Temp t)
+            [ExpS $ externalCall "_stringCompare" [estrl, estrr]
+            , Move (Temp t) (Temp rv)
+            ]) (Temp t)
         _ -> internal $ pack "estas haciendo algo raro con binOpStrExp"
 
     -- arrayExp :: BExp -> BExp -> w BExp

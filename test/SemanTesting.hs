@@ -10,7 +10,7 @@ import           Tools
 
 main :: IO ()
 main =
-  -- testGood "./test/test_code/type/" tester  "test51.tig"
+  -- testGood "./test/test_code/" tester "merge.tig"
 
   putStrLn "\n==== Good loc ====" >>
   testDir good_loc (testSTDGood tester) >>
