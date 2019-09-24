@@ -346,7 +346,7 @@ instance (MemM w) => IrGen w where
           -- the difference in static nesting depth between the two functions involved."
           -- Pag. 134
           slink = if lev > alev -- lev: callee , alev: caller
-                  then P.error "Error en static link"
+                  then Temp fp --  TODO: ¿Está bien esto? ¿P.error "Error en static link"?
                   else F.auxexp (alev-lev)
         case isproc of
             -- Porque en este caso no se hacen las "ins", que ponen los args en temps??
