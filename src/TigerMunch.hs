@@ -20,8 +20,58 @@ class (Monad w, TLGenerator w) => InstrEmitter w where
         return res
 
 munchStm :: InstrEmitter w => Stm -> w ()
-munchStm = undefined
-
+munchStm (Seq s1 s2) = munchStm s1 >> munchStm s2
+munchStm (ExpS e1) = munchExp e
+-- TODO: Agregar casos para optimizar (o nah xd)
+munchStm (Move e1 e2) = do
+    stm1 <- munchExp e1
+    stm2 <- munchExp e2
+    emit $ Move {
+        massem = "mov d0, s0\n",
+        msrc = [stm2],
+        mdst = [stm1]
+    }
+munchStm (Jump (Name _) label) = do
+    emit $ Oper {
+        oassmen = "jmp " ++ show label ++ "\n",
+        osrc = [],
+        odst = [],
+        ojump = Just [label]
+    }
+    return ()
+munchStm (CJump relop e1 e2 l1 l2) = do
+    te1 <- munchExp e1
+    te2 <- munchExp e2
+    -- Primero realizo la comparación
+    emit $ Oper {
+        oassem = "cmp s0, s1\n",
+        osrc = [te1, te2],
+        odst = [],
+        ojump = Nothing
+    }
+    -- Saltamos dependiendo del tipo de operacion fue True
+    let assemRelOp = relop2assem relop
+    emit $ Oper {
+        oassem = assemRelOp ++ show l1,
+        osrc = [],
+        odst = [],
+        ojump = Just [l1]
+    }
+    -- Si el salto condicional "assemRelOp" no se ejecuto, se ejecuta la siguiente instruccion
+    -- el Jump a la label del caso False
+    emit $ Oper {
+        oassem = "jmp " ++ show l2,
+        osrc = [],
+        odst = [],
+        ojump = Just [l2]
+    }
+    return ()
+munchStm (Label label) = do
+    emit $ Label {
+        lassem = show label ++ " :\n",
+        llab = label
+    }
+    return ()
 munchExp :: InstrEmitter w => Exp -> w Temp
 munchExp (Const i) = do
     r <- newTemp
@@ -162,7 +212,30 @@ munchExp (T.Binop T.Mul el er) = do
         ojump = Nothing
     }
     return res
-munchExp (T.Binop T.Div el er) = error "COMPLETAR"
+munchExp (T.Binop T.Div el er) = do
+    -- idiv reg1 --> (eax:edx)/reg1
+    -- pongo 0's en eax porque no me interesa dividir en 64bits
+    tl <- munchExp el
+    tr <- munchExp er
+    emit $ Oper {
+        oassem = "mov d0, 0\n",
+        osrc = [],
+        odst = [eax]
+        ojump = Nothing
+    }
+    emit $ Oper {
+        oassem = "mov d0, s0\n",
+        osrc = [tl],
+        odst = [edx],
+        ojump = Nothing
+    }
+    emit $ Oper {
+        oassem = "idiv s0\n",
+        osrc = [tr],
+        odst = [eax, edx], -- [division, resto]
+        ojump = Nothing
+    }
+    return eax
 munchExp (T.Binop T.And el er) = do
     tl <- munchExp el
     tr <- munchExp er
@@ -220,18 +293,19 @@ munchExp (T.Binop T.ARShift el er) = error "Seriously fUck off"
 munchExp (T.Call e args) = do
     -- Primero guardamos en stack los callersaves
     pushList callersaves
-    -- Ahora los argumentos en los registros de params
+    -- Ahora los argumentos van a stack
     munchArgs args
     -- Llamamos a la función
     emit $ Oper {
-        oassem = "call " ++ show e
+        oassem = "call " ++ show e ++ "\n"
         osrc = [],
         odst = calldefs
         ojump = Nothing
     }
     -- Remove the parameters from stack. This restores the stack to its state before the call was performed.
+    -- Muevo el stack-pointer lo suficiente para que se "olvide" de los parametros
     emit $ Oper {
-        oassem = "add s0 " ++ (show (length args * wSz))
+        oassem = "add s0 " ++ (show (length args * wSz)) ++ "\n"
         osrc = [],
         odst = [esp]
         ojump = Nothing
@@ -240,6 +314,25 @@ munchExp (T.Call e args) = do
     -- The caller can assume that no other registers were modified by the subroutine.
     popList (reverse callersaves)
     return eax
+
+-- | Definimos la mónada que instanciaremos en Emitter. Le puse Mordisco
+-- | porque 'munch' significa masticar (: y me pareció oportuno
+type Mordisco = StateT [Instr] StGen
+
+instance InstrEmitter Mordisco where
+    emit i = do
+        st <- get
+        -- Sabemos que el estado es una lista de instrucciones, así que lo
+        -- agregamos de cheto.
+        put $ i:st
+
+
+
+--------------------------
+-- #######################
+-- Auxiliares
+-- #######################
+--------------------------
 
 -- To pass parameters to the subroutine, push them onto the stack before the call.
 -- The parameters should be pushed in inverted order (i.e. last parameter first).
@@ -294,13 +387,20 @@ popList (x:xs) = do
     }
     popList xs
 
--- | Definimos la mónada que instanciaremos en Emitter. Le puse Mordisco
--- | porque 'munch' significa masticar (: y me pareció oportuno
-type Mordisco = StateT [Instr] StGen
 
-instance InstrEmitter Mordisco where
-    emit i = do
-        st <- get
-        -- Sabemos que el estado es una lista de instrucciones, así que lo
-        -- agregamos de cheto.
-        put $ i:st
+-- data Relop = EQ | NE | LT | GT | LE | GE | ULT | ULE | UGT | UGE
+-- Syntax
+-- je <label> (jump when equal)
+-- jne <label> (jump when not equal)
+-- jz <label> (jump when last result was zero)
+-- jg <label> (jump when greater than)
+-- jge <label> (jump when greater than or equal to)
+-- jl <label> (jump when less than)
+-- jle <label> (jump when less than or equal to)
+relop2assem :: Relop -> String
+relop2assem EQ = "je"
+relop2assem NE = "jne"
+relop2assem LT = "jl"
+relop2assem GT = "jg"
+relop2assem LE = "jle"
+relop2assem GE = "jge"
