@@ -1,5 +1,9 @@
 module Assem where
 
+-- Algunos links con doc. x86
+-- https://www.cs.virginia.edu/~evans/cs216/guides/x86.html
+-- https://www.felixcloutier.com/x86/
+
 import TigerTemp (Label, Temp)
 
 data Instr =

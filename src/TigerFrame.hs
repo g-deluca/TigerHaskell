@@ -12,13 +12,32 @@ import           Prelude                 hiding ( exp )
 --
 
 -- | Registros muy usados.
-fp, sp, rv :: Temp
+fp, sp, bp :: Temp
+eax, ebx, ecx, edx, esi, edi :: Temp
+
+-- No tenemos ???
 -- | Frame pointer
 fp = pack "FP"
--- | Stack pointer
-sp = pack "SP"
+
+-- ES EAX, ver calling convention
+-- lo dejo por si lo usamos sin querer
 -- | Return value
-rv = pack "RV"
+rv = pack "eax"
+--------------
+
+
+-- | Stack pointer
+sp = pack "ESP"
+-- | Base pointer
+bp = pack "EBP"
+
+-- | Registros de x86
+eax = pack "eax"
+ebx = pack "ebx"
+ecx = pack "ecx"
+edx = pack "edx"
+esi = pack "esi"
+edi = pack "edi"
 
 -- | Word size in bytes
 wSz :: Int
@@ -51,8 +70,16 @@ localsInicial = 0
 
 -- | Listas de regustros que define la llamada y registros especiales
 calldefs, specialregs :: [Temp]
-calldefs = [rv]
-specialregs = [rv, fp, sp]
+-- Los registros que una llamada pisa, deberian ser destino de un call
+calldefs = [eax]
+specialregs = [eax, fp, sp, bp]
+
+argregs, calleesaves, callersaves :: [Temp]
+argregs = []
+-- Preservados por la subrutina que se llama
+calleesaves = [ebx, edi, esi]
+-- Preservados por el que llama a la subrutina
+callersaves = [eax, ecx, edx]
 
 -- | Tipo de dato que define el acceso a variables.
 data Access =
