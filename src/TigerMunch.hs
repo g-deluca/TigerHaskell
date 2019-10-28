@@ -1,8 +1,9 @@
 module TigerMunch where
 
-import Assem
+import Assem as A
 
 import TigerTemp
+import TigerFrame
 import TigerUnique
 import TigerTree as T
 
@@ -21,19 +22,19 @@ class (Monad w, TLGenerator w) => InstrEmitter w where
 
 munchStm :: InstrEmitter w => Stm -> w ()
 munchStm (Seq s1 s2) = munchStm s1 >> munchStm s2
-munchStm (ExpS e1) = munchExp e
+munchStm (ExpS e) = void $ munchExp e
 -- TODO: Agregar casos para optimizar (o nah xd)
-munchStm (Move e1 e2) = do
+munchStm (T.Move e1 e2) = do
     stm1 <- munchExp e1
     stm2 <- munchExp e2
-    emit $ Move {
+    emit $ A.Move {
         massem = "mov d0, s0\n",
-        msrc = [stm2],
-        mdst = [stm1]
+        msrc = stm2,
+        mdst = stm1
     }
 munchStm (Jump (Name _) label) = do
     emit $ Oper {
-        oassmen = "jmp " ++ show label ++ "\n",
+        oassem = "jmp " ++ makeStringL label ++ "\n",
         osrc = [],
         odst = [],
         ojump = Just [label]
@@ -52,7 +53,7 @@ munchStm (CJump relop e1 e2 l1 l2) = do
     -- Saltamos dependiendo del tipo de operacion fue True
     let assemRelOp = relop2assem relop
     emit $ Oper {
-        oassem = assemRelOp ++ show l1,
+        oassem = assemRelOp ++ makeStringL l1 ++ "\n",
         osrc = [],
         odst = [],
         ojump = Just [l1]
@@ -60,15 +61,15 @@ munchStm (CJump relop e1 e2 l1 l2) = do
     -- Si el salto condicional "assemRelOp" no se ejecuto, se ejecuta la siguiente instruccion
     -- el Jump a la label del caso False
     emit $ Oper {
-        oassem = "jmp " ++ show l2,
+        oassem = "jmp " ++ makeStringL l2 ++ "\n",
         osrc = [],
         odst = [],
         ojump = Just [l2]
     }
     return ()
-munchStm (Label label) = do
-    emit $ Label {
-        lassem = show label ++ " :\n",
+munchStm (T.Label label) = do
+    emit $ A.Label {
+        lassem = makeStringL label ++ ":\n",
         llab = label
     }
     return ()
@@ -142,11 +143,10 @@ munchExp (T.Binop T.Plus el er) = do
     tr <- munchExp er
     res <- newTemp
     -- TODO: ¿Usar move?
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [res],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = res
     }
     emit $ Oper {
         oassem = "add d0, s0\n",
@@ -159,11 +159,10 @@ munchExp (T.Binop T.Minus el er) = do
     tl <- munchExp el
     tr <- munchExp er
     res <- newTemp
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [res],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = res
     }
     emit $ Oper {
         oassem = "sub d0, s0\n",
@@ -199,11 +198,10 @@ munchExp (T.Binop T.Mul el er) = do
     tl <- munchExp el
     tr <- munchExp er
     res <- newTemp
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [res],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = res
     }
     emit $ Oper {
         oassem = "imul d0, s0\n",
@@ -220,14 +218,13 @@ munchExp (T.Binop T.Div el er) = do
     emit $ Oper {
         oassem = "mov d0, 0\n",
         osrc = [],
-        odst = [eax]
+        odst = [eax],
         ojump = Nothing
     }
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [edx],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = edx
     }
     emit $ Oper {
         oassem = "idiv s0\n",
@@ -240,11 +237,10 @@ munchExp (T.Binop T.And el er) = do
     tl <- munchExp el
     tr <- munchExp er
     res <- newTemp
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [res],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = res
     }
     emit $ Oper {
         oassem = "and d0, s0\n",
@@ -257,11 +253,10 @@ munchExp (T.Binop T.Or el er) = do
     tl <- munchExp el
     tr <- munchExp er
     res <- newTemp
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [res],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = res
     }
     emit $ Oper {
         oassem = "or d0, s0\n",
@@ -274,11 +269,10 @@ munchExp (T.Binop T.XOr el er) = do
     tl <- munchExp el
     tr <- munchExp er
     res <- newTemp
-    emit $ Oper {
-        oassem = "mov d0, s0\n",
-        osrc = [tl],
-        odst = [res],
-        ojump = Nothing
+    emit $ A.Move {
+        massem = "mov d0, s0\n",
+        msrc = tl,
+        mdst = res
     }
     emit $ Oper {
         oassem = "xor d0, s0\n",
@@ -287,9 +281,6 @@ munchExp (T.Binop T.XOr el er) = do
         ojump = Nothing
     }
     return res
-munchExp (T.Binop T.LShift el er) = error "JAJAJAJAJ"
-munchExp (T.Binop T.RShift el er) = error "FUck off"
-munchExp (T.Binop T.ARShift el er) = error "Seriously fUck off"
 munchExp (T.Call e args) = do
     -- Primero guardamos en stack los callersaves
     pushList callersaves
@@ -297,23 +288,24 @@ munchExp (T.Call e args) = do
     munchArgs args
     -- Llamamos a la función
     emit $ Oper {
-        oassem = "call " ++ show e ++ "\n"
+        oassem = "call " ++ show e ++ "\n",
         osrc = [],
-        odst = calldefs
+        odst = calldefs,
         ojump = Nothing
     }
     -- Remove the parameters from stack. This restores the stack to its state before the call was performed.
     -- Muevo el stack-pointer lo suficiente para que se "olvide" de los parametros
     emit $ Oper {
-        oassem = "add s0 " ++ (show (length args * wSz)) ++ "\n"
+        oassem = "add s0 " ++ (show (length args * wSz)) ++ "\n",
         osrc = [],
-        odst = [esp]
+        odst = [sp],
         ojump = Nothing
     }
     -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
     -- The caller can assume that no other registers were modified by the subroutine.
     popList (reverse callersaves)
     return eax
+munchExp _ = error "No implementado ni con planes de hacerlo"
 
 -- | Definimos la mónada que instanciaremos en Emitter. Le puse Mordisco
 -- | porque 'munch' significa masticar (: y me pareció oportuno
@@ -357,19 +349,14 @@ munchArgs args = do
 pushList :: InstrEmitter e => [Temp] -> e ()
 pushList [] = return ()
 pushList (x:xs) = do
-    emit $ Oper {
-        oassem = "push d0\n",
-        osrc = [x],
-        odst = [sp],
-        ojump = Nothing
-    }
+    pushOne x
     pushList xs
 
 -- Sera util ??
 pushOne :: InstrEmitter e => Temp -> e ()
 pushOne temp = do
-    emit $ {
-        oassem = "push d0\n",
+    emit $ Oper {
+        oassem = "push s0\n",
         osrc = [temp],
         odst = [sp],
         ojump = Nothing
@@ -380,9 +367,9 @@ popList :: InstrEmitter e => [Temp] -> e ()
 popList [] = return ()
 popList (x:xs) = do
     emit $ Oper {
-        oassem = "pop " ++ show x
+        oassem = "pop d0\n",
         osrc = [],
-        odst = [x],
+        odst = [x, sp],
         ojump = Nothing
     }
     popList xs
@@ -398,9 +385,9 @@ popList (x:xs) = do
 -- jl <label> (jump when less than)
 -- jle <label> (jump when less than or equal to)
 relop2assem :: Relop -> String
-relop2assem EQ = "je"
-relop2assem NE = "jne"
-relop2assem LT = "jl"
-relop2assem GT = "jg"
-relop2assem LE = "jle"
-relop2assem GE = "jge"
+relop2assem T.EQ = "je"
+relop2assem T.NE = "jne"
+relop2assem T.LT = "jl"
+relop2assem T.GT = "jg"
+relop2assem T.LE = "jle"
+relop2assem T.GE = "jge"

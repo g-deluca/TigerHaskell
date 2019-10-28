@@ -12,26 +12,21 @@ import           Prelude                 hiding ( exp )
 --
 
 -- | Registros muy usados.
-fp, sp, bp :: Temp
-eax, ebx, ecx, edx, esi, edi :: Temp
+rv, fp, sp, bp :: Temp
 
--- No tenemos ???
--- | Frame pointer
-fp = pack "FP"
-
--- ES EAX, ver calling convention
--- lo dejo por si lo usamos sin querer
 -- | Return value
+-- | Es 'eax', ver calling convention. Lo dejo por si lo usamos sin querer.
 rv = pack "eax"
 --------------
 
-
 -- | Stack pointer
-sp = pack "ESP"
--- | Base pointer
-bp = pack "EBP"
+sp = pack "esp"
+-- | Base (frame) pointer
+bp = pack "ebp"
+fp = pack "ebp"
 
 -- | Registros de x86
+eax, ebx, ecx, edx, esi, edi :: Temp
 eax = pack "eax"
 ebx = pack "ebx"
 ecx = pack "ecx"
