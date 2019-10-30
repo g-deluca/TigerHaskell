@@ -36,8 +36,8 @@ adj vertex graph =
   union (pred vertex graph) (succ vertex graph)
 
 mkNode :: a -> Graph a -> Graph a
-mkNode item graph = graph { nodes = insert (Node index item) (nodes graph) }
-  where index = S.foldr (\(Node i _) accum -> max i accum) 0 (nodes graph)
+mkNode item graph = graph { nodes = insert (Node (index+1) item) (nodes graph) }
+  where index = S.foldr (\(Node i _) accum -> (max i accum) + ) 0 (nodes graph)
 
 mkEdge :: Node a -> Node a -> Graph a -> Graph a
 mkEdge src dst graph = graph { edges = insert (src, dst) (edges graph)}
