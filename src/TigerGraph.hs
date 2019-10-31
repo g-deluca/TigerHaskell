@@ -35,8 +35,12 @@ adj :: Node a -> Graph a -> Set (Node a)
 adj vertex graph =
   union (pred vertex graph) (succ vertex graph)
 
-mkNode :: a -> Graph a -> Graph a
-mkNode item graph = graph { nodes = insert (Node (index+1) item) (nodes graph) }
+addNode :: a -> Graph a -> Graph a
+addNode item graph = graph { nodes = insert (Node (index+1) item) (nodes graph) }
+  where index = S.foldr (\(Node i _) accum -> max i accum) 0 (nodes graph)
+
+mkNode :: a -> Graph a -> Node a
+mkNode item graph = Node (index+1) item
   where index = S.foldr (\(Node i _) accum -> max i accum) 0 (nodes graph)
 
 mkEdge :: Node a -> Node a -> Graph a -> Graph a
