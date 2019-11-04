@@ -27,20 +27,19 @@ module TigerMakeGraph where
   isLabel _            = False
 
   instrs2graph :: [Instr] -> (FlowGraph Instr, [Node Instr])
-  instrs2graph instrs = 
+  instrs2graph instrs =
     let labelInstrs = filter isLabel instrs
         otherInstrs = filter (not . isLabel) instrs
         first = labels2graph labelInstrs (emptyFlowGraph, [])
         second = others2graph otherInstrs first
-    in undefined
-
+    in second
 
   labels2graph :: [Instr] -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
   labels2graph [] res = res
   labels2graph (ins:inss) res = labels2graph inss (oneLabel2graph ins res)
-  
+
   oneLabel2graph :: Instr -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
-  oneLabel2graph instr@(Label _ _ ) (flowGraph, nodes) = 
+  oneLabel2graph instr@(Label _ _ ) (flowGraph, nodes) =
       let newNode = mkNode instr (graph flowGraph) -- solo el nodo
           newGraph = addNode instr (graph flowGraph) -- grafo con nuevo nodo
           newIsmove = Map.insert newNode False (ismove flowGraph)
@@ -52,38 +51,39 @@ module TigerMakeGraph where
   others2graph (ins:inss) res = others2graph inss (oneOther2graph ins res)
 
   oneOther2graph :: Instr -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
-  oneOther2graph instr@(Move _ src dst) (flowGraph, nodes) = 
+  oneOther2graph instr@(Move _ src dst) (flowGraph, nodes) =
       let newNode = mkNode instr (graph flowGraph)
           newGraph = addNode instr (graph flowGraph)
           newDef = Map.insert newNode [src] (def flowGraph)
           newUse = Map.insert newNode [dst] (use flowGraph)
           newIsmove = Map.insert newNode True (ismove flowGraph)
       in (flowGraph {graph = newGraph, def = newDef, use = newUse, ismove = newIsmove}, newNode:nodes)
+
   oneOther2graph instr@(Oper _ src dst (Just label)) (flowGraph, nodes) =
       let newNode = mkNode instr (graph flowGraph)
           newGraph = addNode instr (graph flowGraph)
           -- tengo que agregar la arista con el jmp ese
-          foundNode = findNodeWithLabel (head label) nodes -- TODO: PORQUE LABEL ES LIST? SIEMPRE TENGO 1 EN MUNCH
-          newGraph' = if foundNode /= Nothing
-                        then mkEdge newNode (fromJust foundNode) newGraph
-                        else newGraph
+          foundNode = findNodeWithLabel (head label) nodes
+          newGraph' = mkEdge newNode foundNode newGraph
           newDef = Map.insert newNode src (def flowGraph)
           newUse = Map.insert newNode dst (use flowGraph)
-          newIsmove = Map.insert newNode True (ismove flowGraph)
+          newIsmove = Map.insert newNode False (ismove flowGraph)
       in (flowGraph {graph = newGraph', def = newDef, use = newUse, ismove = newIsmove}, newNode:nodes)
+
   oneOther2graph instr@(Oper _ src dst Nothing) (flowGraph, nodes) =
     let newNode = mkNode instr (graph flowGraph)
         newGraph = addNode instr (graph flowGraph)
         newDef = Map.insert newNode src (def flowGraph)
         newUse = Map.insert newNode dst (use flowGraph)
-        newIsmove = Map.insert newNode True (ismove flowGraph)
+        newIsmove = Map.insert newNode False (ismove flowGraph)
     in (flowGraph {graph = newGraph, def = newDef, use = newUse, ismove = newIsmove}, newNode:nodes)
-  
 
-  findNodeWithLabel :: Label -> [Node Instr] -> Maybe (Node Instr)
-  findNodeWithLabel label [] = Nothing -- TODO: ERROR??
-  findNodeWithLabel label (node@(Node _ label'@(Label _ _)):xs) = 
-    if label == llab label' then (Just node) else findNodeWithLabel label xs
+  oneOther2graph (Label _ _) _ = error "why? bad filter"
+
+  findNodeWithLabel :: Label -> [Node Instr] -> Node Instr
+  findNodeWithLabel label [] = error "Error en la busqueda del nodo"
+  findNodeWithLabel label (node@(Node _ label'@(Label _ _)):xs) =
+    if label == llab label' then node else findNodeWithLabel label xs
 
   -- instrs2graph' :: [Instr] -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
   -- instrs2graph' [] accum = accum
