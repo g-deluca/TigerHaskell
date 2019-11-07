@@ -46,6 +46,9 @@ library
       -- Tercer entrega. So vo.
         , Assem
         , TigerMunch
+        , TigerGraph
+        , TigerMakeGraph
+        , TigerLiveness
   build-depends:       base
                        , containers
                        , text

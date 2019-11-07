@@ -84,29 +84,3 @@ module TigerMakeGraph where
   findNodeWithLabel label [] = error "Error en la busqueda del nodo"
   findNodeWithLabel label (node@(Node _ label'@(Label _ _)):xs) =
     if label == llab label' then node else findNodeWithLabel label xs
-
-  -- instrs2graph' :: [Instr] -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
-  -- instrs2graph' [] accum = accum
-  -- instrs2graph' (ins:inss) accum = instrs2graph' inss (one2graph ins accum)
-
-  -- one2graph :: Instr -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
-  -- one2graph instr@(Oper _ src dst (Just label)) (flowGraph, nodes) =
-  --   let newNode = mkNode instr (graph flowGraph)
-  --       newGraph = addNode instr (graph flowGraph)
-  --       -- tengo que agregar la arista con el jmp ese
-
-  --       newDef = Map.insert newNode src (def flowGraph)
-  --       newUse = Map.insert newNode dst (use flowGraph)
-  --       newIsmove = Map.insert newNode True (ismove flowGraph)
-  --   in undefined
-  -- one2graph instr@(Move _ src dst) (flowGraph, nodes) = 
-  --   let newNode = mkNode instr (graph flowGraph)
-  --       newGraph = addNode instr (graph flowGraph)
-  --       newDef = Map.insert newNode [src] (def flowGraph)
-  --       newUse = Map.insert newNode [dst] (use flowGraph)
-  --       newIsmove = Map.insert newNode True (ismove flowGraph)
-  --   in (flowGraph {graph = newGraph, def = newDef, use = newUse, ismove = newIsmove}, newNode:nodes)
-  -- one2graph instr@(Label _ _ ) (flowGraph, nodes) = 
-  --   let newNode = mkNode instr (graph flowGraph) -- solo el nodo
-  --       newGraph = addNode instr (graph flowGraph) -- grafo con nuevo nodo
-  --   in (flowGraph {graph = newGraph}, newNode:nodes)
