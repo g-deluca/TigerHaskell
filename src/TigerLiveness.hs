@@ -46,10 +46,62 @@ module TigerLiveness where
           then return True
           else  let updatedNodes = Map.insert node (LivenessNode {liveIn = newLiveIn, liveOut = newLiveOut}) allNodes
                 in put updatedNodes >> return False
-
     
     keepUpdating <- mapM mkLivenessNode $ Set.toList (nodes graph)
     if foldl (&&) True keepUpdating then return () else mkLivenessMap flowGraph
     
   calculateLiveness :: FlowGraph Instr -> LivenessMap
   calculateLiveness flowGraph = execState (mkLivenessMap flowGraph) Map.empty
+
+
+  data InterferenceGraph a = InterferenceGraph {
+    igraph :: Graph a,
+    tnode :: Map.Map Temp (Node Temp),
+    gtemp :: Map.Map (Node Temp) Temp,
+    moves :: [Instr]
+  }
+
+  emptyInterferenceGraph :: InterferenceGraph Temp
+  emptyInterferenceGraph = InterferenceGraph { igraph = emptyGraph, tnode = Map.empty, gtemp = Map.empty, moves = []}
+
+  interferenceGraph :: FlowGraph Instr -> State LivenessMap (InterferenceGraph Temp)
+  interferenceGraph (FlowGraph graph def use ismove) = do
+    livenessMap <- get
+    let graphNodes = (nodes graph)
+        addInterferenceNodes :: (Node Instr) -> InterferenceGraph Temp -> InterferenceGraph Temp
+        addInterferenceNodes node@(Node index item) iGraph =
+          let defs = def Map.! node
+              livenessNode = livenessMap Map.! node
+              temps = Set.toList $ Set.union (liveIn livenessNode) (liveOut livenessNode)
+              iGraph' = maybeNodeIsMove node iGraph -- lo hago acá porque después pierdo `node`
+          in loopDefs defs temps iGraph'
+        loopDefs :: [Temp] -> [Temp] -> InterferenceGraph Temp -> InterferenceGraph Temp
+        loopDefs [] _ iGraph = iGraph
+        loopDefs (def:xs) temps iGraph = loopDefs xs temps (loopTemps def temps iGraph)
+        loopTemps :: Temp -> [Temp] -> InterferenceGraph Temp -> InterferenceGraph Temp
+        loopTemps _ [] iGraph = iGraph
+        loopTemps def (temp:temps) iGraph =
+          let graph = igraph iGraph
+              tNode = tnode iGraph
+              gTemp = gtemp iGraph
+              nodeDef = mkNode def graph
+              nodeTemp = mkNode temp graph
+              newGraph = addNode def graph
+              newGraph' = addNode temp newGraph
+              newGraph'' = mkEdge nodeDef nodeTemp newGraph'
+              newTNode = Map.insert def nodeTemp (Map.insert def nodeDef tNode)
+              newGTemp = Map.insert nodeDef def (Map.insert nodeTemp def gTemp)
+              newIGraph = iGraph { igraph = newGraph'', tnode = newTNode, gtemp = newGTemp}
+          in loopTemps def temps newIGraph
+        loopNodes :: [Node Instr] -> InterferenceGraph Temp -> InterferenceGraph Temp
+        loopNodes [] iGraph = iGraph
+        loopNodes (n:nodes) iGraph =
+          loopNodes nodes (addInterferenceNodes n iGraph)
+    return (loopNodes (Set.toList graphNodes) emptyInterferenceGraph)
+          
+
+  -- Auxiliar xD
+  maybeNodeIsMove :: Node Instr  -> InterferenceGraph Temp -> InterferenceGraph Temp
+  maybeNodeIsMove (Node _ (Move a b c)) iGraph =
+    let oldMoves = moves iGraph
+    in iGraph { moves = (Move a b c):oldMoves}
