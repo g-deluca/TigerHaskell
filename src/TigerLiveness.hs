@@ -64,9 +64,8 @@ module TigerLiveness where
   emptyInterferenceGraph :: InterferenceGraph Temp
   emptyInterferenceGraph = InterferenceGraph { igraph = emptyGraph, tnode = Map.empty, gtemp = Map.empty, moves = []}
 
-  interferenceGraph :: FlowGraph Instr -> State LivenessMap (InterferenceGraph Temp)
-  interferenceGraph (FlowGraph graph def use ismove) = do
-    livenessMap <- get
+  interferenceGraph :: FlowGraph Instr -> LivenessMap -> (InterferenceGraph Temp)
+  interferenceGraph (FlowGraph graph def use ismove) livenessMap =
     let graphNodes = (nodes graph)
         addInterferenceNodes :: (Node Instr) -> InterferenceGraph Temp -> InterferenceGraph Temp
         addInterferenceNodes node@(Node index item) iGraph =
@@ -89,19 +88,22 @@ module TigerLiveness where
               newGraph = addNode def graph
               newGraph' = addNode temp newGraph
               newGraph'' = mkEdge nodeDef nodeTemp newGraph'
-              newTNode = Map.insert def nodeTemp (Map.insert def nodeDef tNode)
-              newGTemp = Map.insert nodeDef def (Map.insert nodeTemp def gTemp)
+              newTNode = Map.insert temp nodeTemp (Map.insert def nodeDef tNode)
+              newGTemp = Map.insert nodeDef def (Map.insert nodeTemp temp gTemp)
               newIGraph = iGraph { igraph = newGraph'', tnode = newTNode, gtemp = newGTemp}
           in loopTemps def temps newIGraph
         loopNodes :: [Node Instr] -> InterferenceGraph Temp -> InterferenceGraph Temp
         loopNodes [] iGraph = iGraph
         loopNodes (n:nodes) iGraph =
           loopNodes nodes (addInterferenceNodes n iGraph)
-    return (loopNodes (Set.toList graphNodes) emptyInterferenceGraph)
-          
+    in (loopNodes (Set.toList graphNodes) emptyInterferenceGraph)
+
+  calculateInterferenceGraph :: FlowGraph Instr -> InterferenceGraph Temp
+  calculateInterferenceGraph flowGraph = interferenceGraph flowGraph (calculateLiveness flowGraph)
 
   -- Auxiliar xD
   maybeNodeIsMove :: Node Instr  -> InterferenceGraph Temp -> InterferenceGraph Temp
   maybeNodeIsMove (Node _ (Move a b c)) iGraph =
     let oldMoves = moves iGraph
     in iGraph { moves = (Move a b c):oldMoves}
+  maybeNodeIsMove _ iGraph = iGraph
