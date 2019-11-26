@@ -49,6 +49,7 @@ library
         , TigerGraph
         , TigerMakeGraph
         , TigerLiveness
+        , TigerAllocation
   build-depends:       base
                        , containers
                        , text
