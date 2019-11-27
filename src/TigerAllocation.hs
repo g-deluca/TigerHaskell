@@ -8,6 +8,7 @@ import TigerLiveness
 
 import Data.Map as M
 import Data.Set as S
+import Data.List as L
 import Control.Monad.State
 
 data Worklists = Worklists {
@@ -18,12 +19,14 @@ data Worklists = Worklists {
 
     activeMoves :: [Node Instr],
     worklistMoves :: [Node Instr],
+    selectStack :: [Temp],
+    coalescedNodes :: [Temp],
 
     precolored :: S.Set Temp, -- TODO: Leer un poco más sobre esto xd
     initial :: S.Set Temp,
     spillWorklist :: [Temp],
     freezeWorklist :: [Temp],
-    simplifyWorklist :: [Temp]
+    simplifyWorklist :: [Temp]  
 }
 
 type Allocator a = State Worklists a
@@ -117,3 +120,54 @@ nodeMoves t = do
   wlists <- get
   return $
     S.fromList (moveList wlists M.! t) `S.intersection` S.fromList (activeMoves wlists ++ worklistMoves wlists)
+
+adjacent :: Temp -> Allocator [Temp]
+adjacent t = do
+  wlists <- get
+  return $ S.toList $ (adjList wlists M.! t) `S.difference` (S.fromList (selectStack wlists) `S.union` S.fromList (coalescedNodes wlists))
+
+simplify :: Allocator ()
+simplify = do
+  wlists <- get
+  let n = head $ simplifyWorklist wlists
+      newSimplifyWorklist = tail $ simplifyWorklist wlists
+      newSelectStack = n:(selectStack wlists)
+  put $ wlists {simplifyWorklist = newSimplifyWorklist, selectStack = newSelectStack}
+  adj <- adjacent n
+  mapM_ decrementDegree adj
+  return ()
+
+decrementDegree :: Temp -> Allocator ()
+decrementDegree t = do
+  wlists <- get
+  adj <- adjacent t
+  isMoveRelated <- moveRelated t
+  let d = degree wlists M.! t
+      newDegree = M.insert t (d-1) (degree wlists)
+      newSpillWorklist = if (d == k) then L.delete t (spillWorklist wlists) else spillWorklist wlists
+  when (d == k) $ do
+    enableMoves $ adj ++ [t]
+    if isMoveRelated then
+      let newFreezeWorklist = (freezeWorklist wlists) ++ [t]
+      in put wlists { degree = newDegree, spillWorklist = newSpillWorklist, freezeWorklist = newFreezeWorklist}
+    else
+      let newSimplifyWorklist = (simplifyWorklist wlists) ++ [t]
+      in put wlists { degree = newDegree, spillWorklist = newSpillWorklist, simplifyWorklist = newSimplifyWorklist}
+  return ()
+
+enableMoves :: [Temp] -> Allocator ()
+enableMoves temps = do
+  mapM_ doEnableMoves temps
+  where
+    doEnableMoves :: Temp -> Allocator ()
+    doEnableMoves t = do
+      nMoves <- nodeMoves t
+      mapM_ doUpdate (S.toList nMoves)
+    doUpdate :: Node Instr -> Allocator ()
+    doUpdate n = do
+      wlists <- get
+      when (n `L.elem` (activeMoves wlists)) $ do
+        let newActiveMoves = n `L.delete` (activeMoves wlists)
+            newWorklistMoves = (worklistMoves wlists) ++ [n]
+        put wlists {activeMoves = newActiveMoves, worklistMoves = newWorklistMoves}
+        
