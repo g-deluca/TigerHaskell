@@ -11,27 +11,69 @@ import Data.Set as S
 import Data.List as L
 import Control.Monad.State
 
+k = 6
+
 data Worklists = Worklists {
-    moveList :: M.Map Temp [Node Instr],
-    adjSet :: S.Set (Temp, Temp),
-    adjList :: M.Map Temp (S.Set Temp),
-    degree :: M.Map Temp Int,
 
-    activeMoves :: [Node Instr],
-    worklistMoves :: [Node Instr],
-    selectStack :: [Temp],
-    coalescedNodes :: [Temp],
+    -- TODO: ya que en build() tenemos flowGraph y LivenessMap, armamos el interferencaGraph y lo tenemos acá?
 
-    precolored :: S.Set Temp, -- TODO: Leer un poco más sobre esto xd
+    -- Node worklists, sets and stacks. The following
+    -- lists and sets are always mutually disjoint and every node is always
+    -- in exactly on of the sets or lists.
+
+    -- machine registers, preassigned a color
+    precolored :: S.Set Temp,  -- TODO: Leer un poco más sobre esto xd
+    -- temporary registers, not precolored and not yet processed
     initial :: S.Set Temp,
-    spillWorklist :: [Temp],
+    -- list of low-degree non-move-related nodes
+    simplifyWorklist :: [Temp],
+    -- low-degree move-related nodes
     freezeWorklist :: [Temp],
-    simplifyWorklist :: [Temp]  
+    -- high-degree nodes
+    spillWorklist :: [Temp],
+    -- nodes marked for spilling during this round: initially empty
+    spilledNodes :: [Temp],
+    -- registers that have been coalesced
+    -- when u <- v is coalesced, v is added to this set and u put back in some work-list (or viceversa)
+    coalescedNodes :: [Temp],
+    -- nodes suceessfully colored
+    coloredNodes :: [Temp],
+    -- stack containing temporaries removed from the graph
+    selectStack :: [Temp],
+
+    -- Move sets. 5 sets of move instructions, and every Move is in exactly one of these
+    -- (after Build through the end of Main)
+    
+    -- moves that have been coalesced
+    coalescedMoves :: [Node Instr],
+    -- moves whose source and target interfere
+    constrainedMoves :: [Node Instr],
+    -- moves that will no longer be considered for coalescing
+    frozenMoves :: [Node Instr],
+    -- moves enabled for possible coalescing
+    worklistMoves :: [Node Instr],
+    -- moves not yet ready for coalescing
+    activeMoves :: [Node Instr],
+
+    -- the set of interference edges (u,v) in the graph. if (u,v) \in adjSet => (v,u) \in adjSet
+    adjSet :: S.Set (Temp, Temp),
+    -- adjacency list representation of the graph.
+    -- for each non-precolored temporary u, adjList[u] is the set of nodes that interfere with u.
+    adjList :: M.Map Temp (S.Set Temp),
+    -- the current degree of each node
+    degree :: M.Map Temp Int,
+    -- a mapping from a node to the list of moves it is associated with
+    moveList :: M.Map Temp [Node Instr],
+    -- when a move (u, v) has been coalesced, and v put in coalescedNodes,
+    -- alias[v] = u
+    alias :: M.Map Temp Temp,
+    -- the color chosen by the algorithm for a node;
+    -- for precolored nodes this is initialized to the given color
+    color :: M.Map Temp Int
+
 }
 
 type Allocator a = State Worklists a
-
-k = 6
 
 build :: FlowGraph Instr -> LivenessMap -> Allocator ()
 build flowGraph livenessMap =
@@ -62,35 +104,33 @@ build flowGraph livenessMap =
           wlists <- get
           let newMoveList = M.insertWith (++) t [node] (moveList wlists)
           put $ wlists { moveList = newMoveList}
-
-        addEdge :: Temp -> Temp -> Allocator ()
-        addEdge d l = do
-            wlists <- get
-            when (S.notMember (d, l) (adjSet wlists) && d /= l) $ do
-              let newAdjSet = S.insert (d, l) $ S.insert (l, d) (adjSet wlists)
-
-                  newAdjList = if (S.notMember d (precolored wlists))
-                    then M.insertWith S.union d (S.singleton l) (adjList wlists)
-                    else adjList wlists
-                  newDegree = if (S.notMember d (precolored wlists))
-                    then M.insertWith (+) d 1 (degree wlists)
-                    else degree wlists
-
-                  newAdjList' = if (S.notMember l (precolored wlists))
-                    then M.insertWith S.union l (S.singleton d) newAdjList
-                    else newAdjList
-                  newDegree' = if (S.notMember l (precolored wlists))
-                    then M.insertWith (+) l 1 newDegree
-                    else newDegree
-              put $ wlists { adjSet = newAdjSet, adjList = newAdjList', degree = newDegree' }
-
     in mapM_ buildNode fnodes
+
+addEdge :: Temp -> Temp -> Allocator ()
+addEdge d l = do
+    wlists <- get
+    when (S.notMember (d, l) (adjSet wlists) && d /= l) $ do
+      let newAdjSet = S.insert (d, l) $ S.insert (l, d) (adjSet wlists)
+
+          newAdjList = if (S.notMember d (precolored wlists))
+            then M.insertWith S.union d (S.singleton l) (adjList wlists)
+            else adjList wlists
+          newDegree = if (S.notMember d (precolored wlists))
+            then M.insertWith (+) d 1 (degree wlists)
+            else degree wlists
+
+          newAdjList' = if (S.notMember l (precolored wlists))
+            then M.insertWith S.union l (S.singleton d) newAdjList
+            else newAdjList
+          newDegree' = if (S.notMember l (precolored wlists))
+            then M.insertWith (+) l 1 newDegree
+            else newDegree
+      put $ wlists { adjSet = newAdjSet, adjList = newAdjList', degree = newDegree' }
 
 makeWorklist :: Allocator ()
 makeWorklist = do
   wlists <- get
   mapM_ makeWorklistStep (initial wlists)
-
   where
     makeWorklistStep :: Temp -> Allocator ()
     makeWorklistStep n = do
@@ -135,7 +175,6 @@ simplify = do
   put $ wlists {simplifyWorklist = newSimplifyWorklist, selectStack = newSelectStack}
   adj <- adjacent n
   mapM_ decrementDegree adj
-  return ()
 
 decrementDegree :: Temp -> Allocator ()
 decrementDegree t = do
@@ -170,4 +209,99 @@ enableMoves temps = do
         let newActiveMoves = n `L.delete` (activeMoves wlists)
             newWorklistMoves = (worklistMoves wlists) ++ [n]
         put wlists {activeMoves = newActiveMoves, worklistMoves = newWorklistMoves}
-        
+
+coalesce :: Allocator ()
+coalesce = do
+  wlists <- get
+  let m@(Node _ (move)) = head $ worklistMoves wlists
+  x <- getAlias $ msrc move
+  y <- getAlias $ mdst move
+  let (u, v) = if L.elem y (precolored wlists) then (y,x) else (x,y)
+  let newWorklistMoves = L.filter (==m) (worklistMoves wlists)
+  adjU <- adjacent u
+  adjV <- adjacent v
+  isConservative <- conservative (adjU ++ adjV)
+  isOk <- checkOk v u
+  if u == v then do
+    addCoalescedMoves m
+    addWorkList u
+  else  if L.elem v (precolored wlists) && S.member (u,v) (adjSet wlists) then do
+          addConstrainedMoves m
+          addWorkList u
+          addWorkList v
+        else  if  L.elem u (precolored wlists) && isOk || 
+                  L.notElem u (precolored wlists) && isConservative then do
+                addCoalescedMoves m
+                combine u v
+                addWorkList u
+              else do
+                addActiveMoves m
+  where
+    addCoalescedMoves :: Node Instr -> Allocator ()
+    addCoalescedMoves m = do
+      wlists <- get
+      let newCoalescedMoves = (coalescedMoves wlists) ++ [m]
+      put wlists {coalescedMoves = newCoalescedMoves}
+    addConstrainedMoves :: Node Instr -> Allocator ()
+    addConstrainedMoves m = do
+      wlists <- get
+      let newConstrainedMoves = (constrainedMoves wlists) ++ [m]
+      put wlists {constrainedMoves = newConstrainedMoves}
+    checkOk :: Temp -> Temp -> Allocator Bool
+    checkOk v u = do
+      wlists <- get
+      adj <- adjacent v
+      foldM (\accum a -> ok a u) True adj
+    addActiveMoves :: Node Instr -> Allocator ()
+    addActiveMoves m = do
+      wlists <- get
+      let newActiveMoves = (activeMoves wlists) ++ [m]
+      put wlists {activeMoves = newActiveMoves}
+
+
+addWorkList :: Temp -> Allocator ()
+addWorkList u = do
+  wlists <- get
+  isMoveRelated <- moveRelated u
+  when (S.notMember u (precolored wlists) && not (isMoveRelated) && (degree wlists M.! u) < k) $ do
+    let newFreezeWorklist = L.filter (==u) (freezeWorklist wlists)
+        newSimplifyWorklist = (simplifyWorklist wlists) ++ [u]
+    put wlists {freezeWorklist = newFreezeWorklist, simplifyWorklist = newSimplifyWorklist}
+
+ok :: Temp -> Temp -> Allocator Bool
+ok t r = do
+  wlists <- get
+  let tDegree = (degree wlists) M.! t
+      isPrecolored = S.member t (precolored wlists)
+      isAdjSet = S.member (t, r) (adjSet wlists)
+  return $ (tDegree < k) || isPrecolored || isAdjSet
+
+conservative :: [Temp] -> Allocator Bool
+conservative nodes = do
+  wlists <- get
+  let i = L.foldl (\a n -> if (degree wlists) M.! n >= k then a+1 else a) 0 (nodes)
+  return (i < k)
+
+getAlias :: Temp -> Allocator Temp
+getAlias n = do
+  wlists <- get
+  let nAlias = (alias wlists) M.! n
+  nAlias' <- getAlias nAlias
+  return $ if L.elem n (coalescedNodes wlists) then  nAlias' else n
+
+combine :: Temp -> Temp -> Allocator ()
+combine u v = do
+  wlists <- get
+  adj <- adjacent v
+  let 
+    newFreezeWorklist = if L.elem v (freezeWorklist wlists) then L.filter (==v) (freezeWorklist wlists) else freezeWorklist (wlists)
+    newSpillWorklist = if L.notElem v (freezeWorklist wlists) then L.filter (==v) (spillWorklist wlists) else spillWorklist (wlists)
+    newCoalescedNodes = (coalescedNodes wlists) ++ [v]
+    newAlias = M.insert v u (alias wlists)
+    newMovelist = M.insert u (((moveList wlists) M.! u) ++ ((moveList wlists) M.! v)) (moveList wlists)
+  mapM_ (\t -> do addEdge t v >> decrementDegree t) adj
+  when (degree wlists M.! u >= k && L.elem u (freezeWorklist wlists)) $ do
+    let newFreezeWorklist' = L.filter (==u) newFreezeWorklist
+        newSpillWorklist' = newSpillWorklist ++ [u]
+    put wlists {freezeWorklist = newFreezeWorklist', spillWorklist = newSpillWorklist',
+                coalescedNodes = newCoalescedNodes, alias = newAlias, moveList = newMovelist}
