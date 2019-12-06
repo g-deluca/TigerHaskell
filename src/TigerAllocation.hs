@@ -305,3 +305,75 @@ combine u v = do
         newSpillWorklist' = newSpillWorklist ++ [u]
     put wlists {freezeWorklist = newFreezeWorklist', spillWorklist = newSpillWorklist',
                 coalescedNodes = newCoalescedNodes, alias = newAlias, moveList = newMovelist}
+
+freeze :: Allocator ()
+freeze = do
+  wlists <- get
+  let u = head $ freezeWorklist wlists
+  let newFreezeWorklist = tail $ freezeWorklist wlists
+  let newSimplifyWorklist = simplifyWorklist wlists ++ [u]
+  put wlists {freezeWorklist = newFreezeWorklist, simplifyWorklist = newSimplifyWorklist}
+  freezeMoves u
+
+freezeMoves :: Temp -> Allocator ()
+freezeMoves u = do
+  nMoves <- nodeMoves u
+  mapM_ doFreezeMoves nMoves
+    where
+      doFreezeMoves :: Node Instr -> Allocator ()
+      doFreezeMoves m@(Node _ (move)) = do
+        wlists <- get
+        let x = msrc move
+            y = mdst move
+        xAlias <- getAlias x
+        yAlias <- getAlias y
+        uAlias <- getAlias u
+        let v = if yAlias == uAlias then xAlias else yAlias
+        vMoves <- nodeMoves v
+        let newActiveMoves = L.filter (==m) (activeMoves wlists)
+        let newFrozenMoves = (frozenMoves wlists) ++ [m]
+        when (S.null vMoves && ((degree wlists) M.! v) < k) $ do
+          let newFreezeWorklist = L.filter (==v) (freezeWorklist wlists)
+          let newSimplifyWorklist = (simplifyWorklist wlists) ++ [v]
+          put wlists {activeMoves = newActiveMoves, frozenMoves = newFrozenMoves,
+                      simplifyWorklist = newSimplifyWorklist, freezeWorklist = newFreezeWorklist}
+
+selectSpill :: Allocator ()
+selectSpill = do
+  wlists <- get
+  let m = head $ spillWorklist wlists -- heuristica??
+      newSpillWorklist = tail $ spillWorklist wlists
+      newSimplifyWorklist = (simplifyWorklist wlists) ++ [m]
+  freezeMoves m
+
+-- work in progress de ak pa abajo
+assignColors :: Allocator ()
+assignColors = do
+  wlists <- get
+  doAssignColors (selectStack wlists)
+  mapM_ doColor (coalescedNodes wlists)
+    where
+      doColor :: Temp -> Allocator ()
+      doColor n = undefined
+
+doAssignColors :: [Temp] -> Allocator ()
+doAssignColors [] = return ()
+doAssignColors selectStack = do
+  wlists <- get
+  let n = head $ selectStack
+      newSelectStack = tail $ selectStack
+  put wlists {selectStack = newSelectStack}
+  let okColors = S.fromList [0..(k-1)]
+  mapM_ updateColors (S.toList $ (adjList wlists) M.! n)
+  return ()
+    where
+      updateColors :: Temp -> Allocator ()
+      updateColors w = do
+        wlists <- get
+        wAlias <- getAlias w
+        when (S.member wAlias (S.union (precolored wlists) (S.fromList $ coloredNodes wlists))) $ do
+          let newOkColors = okColors S.\\ (S.singleton $ (color wlists) M.! wAlias)
+
+
+  -- METER okColors en el estado y setearlo al default cada vez q se entra a esta funcion
+  -- sino pght
