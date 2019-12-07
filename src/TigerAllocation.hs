@@ -17,6 +17,9 @@ data Worklists = Worklists {
 
     -- TODO: ya que en build() tenemos flowGraph y LivenessMap, armamos el interferencaGraph y lo tenemos acá?
 
+    -- Custom
+    -- lista de colores disponibles
+    okColors :: S.Set Int,
     -- Node worklists, sets and stacks. The following
     -- lists and sets are always mutually disjoint and every node is always
     -- in exactly on of the sets or lists.
@@ -74,6 +77,11 @@ data Worklists = Worklists {
 }
 
 type Allocator a = State Worklists a
+
+setOkColors :: Allocator ()
+setOkColors = do
+  wlists <- get
+  put wlists { okColors = S.fromList [0..(k-1)] }
 
 build :: FlowGraph Instr -> LivenessMap -> Allocator ()
 build flowGraph livenessMap =
@@ -354,26 +362,42 @@ assignColors = do
   mapM_ doColor (coalescedNodes wlists)
     where
       doColor :: Temp -> Allocator ()
-      doColor n = undefined
+      doColor n = do
+        wlists <- get
+        nAlias <- getAlias n
+        let newColor = M.insert n ((color wlists) M.! nAlias) (color wlists)
+        put wlists {color = newColor}
 
+-- este seria el while del libro
 doAssignColors :: [Temp] -> Allocator ()
 doAssignColors [] = return ()
-doAssignColors selectStack = do
+doAssignColors sStack = do
   wlists <- get
-  let n = head $ selectStack
-      newSelectStack = tail $ selectStack
+  let n = head $ sStack
+      newSelectStack = tail $ sStack
   put wlists {selectStack = newSelectStack}
-  let okColors = S.fromList [0..(k-1)]
+  setOkColors
   mapM_ updateColors (S.toList $ (adjList wlists) M.! n)
-  return ()
-    where
-      updateColors :: Temp -> Allocator ()
-      updateColors w = do
-        wlists <- get
-        wAlias <- getAlias w
-        when (S.member wAlias (S.union (precolored wlists) (S.fromList $ coloredNodes wlists))) $ do
-          let newOkColors = okColors S.\\ (S.singleton $ (color wlists) M.! wAlias)
+  wlists' <- get
+  if (S.null $ okColors wlists') then do
+    let newSpilledNodes = (spilledNodes wlists') ++ [n]
+    put wlists' {spilledNodes = newSpilledNodes}
+    doAssignColors (selectStack wlists')
+  else do
+    let newColoredNodes = (coloredNodes wlists) ++ [n]
+    let c = S.findMin $ okColors wlists'
+    let newColor = M.insert n c (color wlists')
+    put wlists' {coloredNodes = newColoredNodes, color = newColor}
+    doAssignColors (selectStack wlists')
+  where
+    updateColors :: Temp -> Allocator ()
+    updateColors w = do
+      wlists <- get
+      wAlias <- getAlias w
+      when (S.member wAlias (S.union (precolored wlists) (S.fromList $ coloredNodes wlists))) $ do
+        let newOkColors = (okColors wlists) S.\\ (S.singleton $ (color wlists) M.! wAlias)
+        put wlists {okColors = newOkColors}
 
-
-  -- METER okColors en el estado y setearlo al default cada vez q se entra a esta funcion
-  -- sino pght
+rewriteProgram :: Allocator ()
+rewriteProgram = undefined
+  
