@@ -5,6 +5,8 @@ import TigerTemp
 import TigerGraph
 import TigerMakeGraph
 import TigerLiveness
+import TigerFrame
+import TigerUnique
 
 import Data.Map as M
 import Data.Set as S
@@ -76,7 +78,7 @@ data Worklists = Worklists {
 
 }
 
-type Allocator a = State Worklists a
+type Allocator = StateT Worklists StGen
 
 setOkColors :: Allocator ()
 setOkColors = do
@@ -225,7 +227,7 @@ coalesce = do
   x <- getAlias $ msrc move
   y <- getAlias $ mdst move
   let (u, v) = if L.elem y (precolored wlists) then (y,x) else (x,y)
-  let newWorklistMoves = L.filter (==m) (worklistMoves wlists)
+  let newWorklistMoves = L.filter (/=m) (worklistMoves wlists)
   adjU <- adjacent u
   adjV <- adjacent v
   isConservative <- conservative (adjU ++ adjV)
@@ -272,7 +274,7 @@ addWorkList u = do
   wlists <- get
   isMoveRelated <- moveRelated u
   when (S.notMember u (precolored wlists) && not (isMoveRelated) && (degree wlists M.! u) < k) $ do
-    let newFreezeWorklist = L.filter (==u) (freezeWorklist wlists)
+    let newFreezeWorklist = L.filter (/=u) (freezeWorklist wlists)
         newSimplifyWorklist = (simplifyWorklist wlists) ++ [u]
     put wlists {freezeWorklist = newFreezeWorklist, simplifyWorklist = newSimplifyWorklist}
 
@@ -302,14 +304,14 @@ combine u v = do
   wlists <- get
   adj <- adjacent v
   let 
-    newFreezeWorklist = if L.elem v (freezeWorklist wlists) then L.filter (==v) (freezeWorklist wlists) else freezeWorklist (wlists)
-    newSpillWorklist = if L.notElem v (freezeWorklist wlists) then L.filter (==v) (spillWorklist wlists) else spillWorklist (wlists)
+    newFreezeWorklist = if L.elem v (freezeWorklist wlists) then L.filter (/=v) (freezeWorklist wlists) else freezeWorklist (wlists)
+    newSpillWorklist = if L.notElem v (freezeWorklist wlists) then L.filter (/=v) (spillWorklist wlists) else spillWorklist (wlists)
     newCoalescedNodes = (coalescedNodes wlists) ++ [v]
     newAlias = M.insert v u (alias wlists)
     newMovelist = M.insert u (((moveList wlists) M.! u) ++ ((moveList wlists) M.! v)) (moveList wlists)
   mapM_ (\t -> do addEdge t v >> decrementDegree t) adj
   when (degree wlists M.! u >= k && L.elem u (freezeWorklist wlists)) $ do
-    let newFreezeWorklist' = L.filter (==u) newFreezeWorklist
+    let newFreezeWorklist' = L.filter (/=u) newFreezeWorklist
         newSpillWorklist' = newSpillWorklist ++ [u]
     put wlists {freezeWorklist = newFreezeWorklist', spillWorklist = newSpillWorklist',
                 coalescedNodes = newCoalescedNodes, alias = newAlias, moveList = newMovelist}
@@ -338,10 +340,10 @@ freezeMoves u = do
         uAlias <- getAlias u
         let v = if yAlias == uAlias then xAlias else yAlias
         vMoves <- nodeMoves v
-        let newActiveMoves = L.filter (==m) (activeMoves wlists)
+        let newActiveMoves = L.filter (/=m) (activeMoves wlists)
         let newFrozenMoves = (frozenMoves wlists) ++ [m]
         when (S.null vMoves && ((degree wlists) M.! v) < k) $ do
-          let newFreezeWorklist = L.filter (==v) (freezeWorklist wlists)
+          let newFreezeWorklist = L.filter (/=v) (freezeWorklist wlists)
           let newSimplifyWorklist = (simplifyWorklist wlists) ++ [v]
           put wlists {activeMoves = newActiveMoves, frozenMoves = newFrozenMoves,
                       simplifyWorklist = newSimplifyWorklist, freezeWorklist = newFreezeWorklist}
@@ -398,6 +400,47 @@ doAssignColors sStack = do
         let newOkColors = (okColors wlists) S.\\ (S.singleton $ (color wlists) M.! wAlias)
         put wlists {okColors = newOkColors}
 
-rewriteProgram :: Allocator ()
-rewriteProgram = undefined
-  
+rewriteProgram :: [Instr] -> Frame -> Allocator (([Instr]),Frame)
+rewriteProgram instr frame = do
+  wlists <- get
+  doSpill (spilledNodes wlists) instr frame
+  return (instr, frame)
+    where
+      doSpill :: [Temp] -> [Instr] -> Frame -> Allocator ([Instr], Frame)
+      doSpill [] instr frame = return (instr frame)
+      doSpill (t:temps) = do
+        
+
+
+finiquitar :: [Instr] -> Frame -> Allocator ()
+finiquitar instr frame = do
+  let (flowGraph, _nodes) = instrs2graph instr
+      livenessMap = calculateLiveness flowGraph
+  build flowGraph livenessMap
+  makeWorklist
+  repeatFiniquitar
+  assignColors
+  wlists <- get
+  when (spilledNodes wlists /= []) $ do
+    (newInstr, newFrame) <- rewriteProgram instr frame
+    finiquitar newInstr newFrame
+    where
+      repeatFiniquitar :: Allocator ()
+      repeatFiniquitar = do
+        step
+        condition <- check
+        if condition then return () else repeatFiniquitar
+      step :: Allocator ()
+      step = do
+        wlists <- get
+        if (simplifyWorklist wlists) /= [] then simplify
+              else  if (worklistMoves wlists) /= [] then coalesce
+                    else  if (freezeWorklist wlists) /= [] then freeze
+                          else  if (spillWorklist wlists) /= [] then selectSpill
+                                else return ()
+      check :: Allocator Bool
+      check = do
+        wlists <- get
+        return ((simplifyWorklist wlists) == [] && (worklistMoves wlists) == [] &&
+                (freezeWorklist wlists) == [] && (spillWorklist wlists) == [])
+                            
