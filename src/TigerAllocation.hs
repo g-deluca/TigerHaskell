@@ -239,7 +239,7 @@ coalesce = do
           addConstrainedMoves m
           addWorkList u
           addWorkList v
-        else  if  L.elem u (precolored wlists) && isOk || 
+        else  if  L.elem u (precolored wlists) && isOk ||
                   L.notElem u (precolored wlists) && isConservative then do
                 addCoalescedMoves m
                 combine u v
@@ -303,7 +303,7 @@ combine :: Temp -> Temp -> Allocator ()
 combine u v = do
   wlists <- get
   adj <- adjacent v
-  let 
+  let
     newFreezeWorklist = if L.elem v (freezeWorklist wlists) then L.filter (/=v) (freezeWorklist wlists) else freezeWorklist (wlists)
     newSpillWorklist = if L.notElem v (freezeWorklist wlists) then L.filter (/=v) (spillWorklist wlists) else spillWorklist (wlists)
     newCoalescedNodes = (coalescedNodes wlists) ++ [v]
@@ -407,10 +407,63 @@ rewriteProgram instr frame = do
   return (instr, frame)
     where
       doSpill :: [Temp] -> [Instr] -> Frame -> Allocator ([Instr], Frame)
-      doSpill [] instr frame = return (instr frame)
-      doSpill (t:temps) = do
-        
+      doSpill [] instr frame = return (instr, frame)
+      doSpill (t:temps) instr frame = do
+        (newInstr, newFrame) <- spillOneTemp t instr frame
+        doSpill temps newInstr newFrame
 
+
+      spillOneTemp :: Temp -> [Instr] -> Frame -> Allocator ([Instr], Frame)
+      spillOneTemp t [] frame = return ([], frame {actualReg = actualReg frame + 1})
+      spillOneTemp t ((Move assem dst src):instr) frame = do
+        let def = t == dst
+            use = t == src
+        (spilledInstr, newFrame) <- spillOneTemp t instr frame
+        if def
+          then do
+            freshTemp <- newTemp
+            return ([Move assem freshTemp src] ++ [(push freshTemp)] ++ spilledInstr, newFrame)
+          else if use
+            then do
+              freshTemp <- newTemp
+              return ([(pop freshTemp)] ++ [Move assem dst freshTemp] ++  spilledInstr, newFrame)
+            else return ([Move assem dst src] ++ spilledInstr, newFrame)
+
+      spillOneTemp t ((Oper assem dst src jmp):instr) frame = do
+        let def = elem t dst
+            use = elem t src
+        (spilledInstr, newFrame) <- spillOneTemp t instr frame
+        if def
+          then do
+            freshTemp <- newTemp
+            let newDst = freshTemp : (L.filter (/=t) dst)
+            return ([Oper assem newDst src jmp] ++ [(push freshTemp)] ++ spilledInstr, newFrame)
+          else if use
+            then do
+              freshTemp <- newTemp
+              let newSrc = freshTemp : (L.filter (/=t) src)
+              return ([(pop freshTemp)] ++ [Oper assem dst newSrc jmp] ++  spilledInstr, newFrame)
+            else return ([Oper assem dst src jmp] ++ spilledInstr, newFrame)
+
+      spillOneTemp t (label:instr) frame = do
+        (spilledInstr, newFrame) <- spillOneTemp t instr frame
+        return (label:spilledInstr, newFrame)
+
+      pop :: Temp -> Instr
+      pop t = Oper {
+        oassem = "pop d0\n",
+        osrc = [],
+        odst = [t, sp],
+        ojump = Nothing
+      }
+
+      push :: Temp -> Instr
+      push t = Oper {
+          oassem = "push s0\n",
+          osrc = [t],
+          odst = [sp],
+          ojump = Nothing
+      }
 
 finiquitar :: [Instr] -> Frame -> Allocator ()
 finiquitar instr frame = do
@@ -443,4 +496,3 @@ finiquitar instr frame = do
         wlists <- get
         return ((simplifyWorklist wlists) == [] && (worklistMoves wlists) == [] &&
                 (freezeWorklist wlists) == [] && (spillWorklist wlists) == [])
-                            
