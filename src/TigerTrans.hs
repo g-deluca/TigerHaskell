@@ -328,28 +328,27 @@ instance (MemM w) => IrGen w where
                                   tmp  <- newTemp
                                   return (Temp tmp, Move (Temp tmp) earg) ) args
         -- Obtenemos el nivel del llamante (caller)
-        alev  <- getActualLevel
+        callerLevel  <- getActualLevel
         let
           -- Obtenemos el nivel de "name" (callee)
-          lev   = getNlvl lvl
+          calleeLevel   = getNlvl lvl
           -- Nombre de los temporales que tienen los argumentos
           args' = List.map fst targs
           -- Instrucciones de los argumentos
           ins   = List.map snd targs
           -- Como llamar a la función
           call  = case external of
-                       Runtime -> externalCall $ unpack name -- TODO: Call (Name name) ???
+                       Runtime -> externalCall $ unpack name -- TODO: What's the difference with Call (Name name) ???
                        Propia  -> Call (Name name)
           -- Calculamos el static link
           -- "So on each procedure call or variable access, a chain of zero
           -- or more fetches is required; the length of the chain is just
           -- the difference in static nesting depth between the two functions involved."
           -- Pag. 134
-          slink = if lev > alev -- lev: callee , alev: caller
+          slink = if calleeLevel > callerLevel
                   then Temp fp --  TODO: ¿Está bien esto? ¿P.error "Error en static link"?
-                  else F.auxexp (alev-lev)
+                  else F.auxexp (callerLevel - calleeLevel)
         case isproc of
-            -- Porque en este caso no se hacen las "ins", que ponen los args en temps??
             IsProc ->
                 return $ Nx $
                    seq $ ins ++ [ExpS $ call (slink:args')]

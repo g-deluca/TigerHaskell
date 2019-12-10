@@ -46,7 +46,7 @@ pattern TBool :: Tipo
 pattern TBool <- (TInt RW)
   where TBool = TInt RW
 
--- TODO: Para los estudiantes avanzados, estaría bueno hacer otro tipo que
+-- NOTE: Para los estudiantes avanzados, estaría bueno hacer otro tipo que
 -- fuerce dicha noción. Lo fácil es hacer otro tipo que nos los tenga, y
 -- hacer las funciones correspondientes para tener una 'TipoConRef -> TipoSinRef'.
 

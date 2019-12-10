@@ -11,7 +11,9 @@ import TigerFrame
 --     deriving Show
 
 -- type FunEntry = (Unique, Label, [Tipo], Tipo, Externa)
--- TODO: Cambiamos el Unique por Level a propósito?
+-- Now our "Unique" is the level where the function is defined
+-- since it can't be that two functions are declared at the same
+-- Level with the same Label
 type FunEntry = (Level, Label, [Tipo], Tipo, Externa)
 
 

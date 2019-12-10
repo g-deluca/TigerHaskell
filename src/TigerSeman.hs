@@ -61,6 +61,8 @@ class (Demon w, Monad w, UniqueGenerator w) => Manticore w where
   -- | Funciones de Debugging!
     showVEnv :: w a -> w a
     showTEnv :: w a -> w a
+
+    showEnv :: w a -> w a
     --
     -- | Función monadica que determina si dos tipos son iguales.
     -- El catch está en que tenemos una especie de referencia entre los
@@ -213,7 +215,6 @@ transTy (RecordTy flds) = do
   tipos <- mapM (transTy . snd) ordered
   -- Por último, junto todo y le agrego la posición
   let fields = zip3 symbols tipos [0..]
-  -- TODO: Revisar que Manticore sea una instancia de Unique
   unique <- mkUnique
   return (TRecord fields unique)
 transTy (ArrayTy s) = do
@@ -502,7 +503,6 @@ insertRecords ((rName, rTy):recordsTys) allTys m = do
   -- campos de rName
   rTipo' <- transTy rTy
   -- Por lo tanto, definimos rTipo usando el truco de 'Tying the knot':
-  -- TODO: ¿el |let| sirve tanto como el |where|?
   let rTipo = autoRef rName rTipo rTipo'
   -- Cerramos este 'paso' actualizando todas las posibles referencias a rName
   updateTipos rName rTipo allTys $
@@ -517,7 +517,7 @@ transExp (VarExp v p) = addpos (transVar v) p
 transExp UnitExp{} = fmap (,TUnit) unitExp
 transExp NilExp{} = fmap (,TNil) nilExp
 transExp (IntExp i _) = fmap (,TInt RW) (intExp i)
-transExp (StringExp s _) = fmap (,TString) (stringExp (pack s))
+transExp (StringExp s _) = fmap (,TString) (stringExp (pack s)) >>= \res -> showEnv (return res)
 transExp (CallExp nm args p) = do
   (lvl, _, tipos_params, tipo_nm, externa) <- addpos (getTipoFunV nm) p
   args' <- mapM transExp args
@@ -734,7 +734,10 @@ data Estado = Est {
   salida :: [Maybe Label],
   frags :: [Frag]
   }
-    deriving Show
+
+
+instance Show Estado where
+    show estado = "Frags: " ++ (show (frags estado)) ++ " \n"
 -- data EstadoG = G {vEnv :: [M.Map Symbol EnvEntry], tEnv :: [M.Map Symbol Tipo]}
 --     deriving Show
 --
@@ -849,6 +852,13 @@ instance Manticore Monada where
       s <- get
       trace (show (tEnv s)) m
 
+    showEnv m = do
+      s <- get
+      trace (customShow s) m
+      where
+        customShow :: Estado -> String
+        customShow estado = "Frags: " ++ (show (frags estado)) ++ " \n"
+
 instance MemM Monada where
     getActualLevel = do
       st <- get
@@ -901,10 +911,19 @@ instance MemM Monada where
 runMonada :: Monada (BExp, Tipo) -> StGen (Either Symbol (BExp, Tipo))
 runMonada =  flip evalStateT initConf . runExceptT
 
+execMonada :: Monada (BExp, Tipo) -> StGen Estado
+execMonada =  flip execStateT initConf . runExceptT
+
 runSeman :: Exp -> StGen (Either Symbol (BExp, Tipo))
 runSeman = runMonada . transExp
+
+execSeman :: Exp -> StGen Estado
+execSeman = execMonada . transExp
 
 -- StGen v = State Integer v
 -- newtype State s v = St {runSt :: s -> (v , s)}
 calcularSeman :: Exp -> Either Symbol (BExp, Tipo)
 calcularSeman = fst . flip TigerUnique.evalState 0 . runSeman
+
+calcularEstadoSeman :: Exp -> Estado
+calcularEstadoSeman = fst . flip TigerUnique.evalState 0 . execSeman

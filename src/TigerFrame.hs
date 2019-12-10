@@ -142,7 +142,7 @@ defaultFrame = Frame
 --
 --------------------------------------------------------------------------------
 
--- TODOS A stack por i386
+-- Todos a stack por i386
 prepFormals :: Frame -> [Access]
 prepFormals fs = reverse $ snd
   (foldl (\(n, rs) _ -> (n + argsGap, InFrame n : rs))

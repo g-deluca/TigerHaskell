@@ -27,6 +27,9 @@ bad_loc = "./test/test_code/syntax"
 type_loc :: String
 type_loc = "./test/test_code/type"
 
+-- Carpeta para mover archivos que estamos debuggeando
+working_loc :: String
+working_loc = "./test/test_code/working"
 
 -- | Función general para testear.
 -- Toma un FilePath en forma de |String|
