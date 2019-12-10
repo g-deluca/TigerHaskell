@@ -517,7 +517,7 @@ transExp (VarExp v p) = addpos (transVar v) p
 transExp UnitExp{} = fmap (,TUnit) unitExp
 transExp NilExp{} = fmap (,TNil) nilExp
 transExp (IntExp i _) = fmap (,TInt RW) (intExp i)
-transExp (StringExp s _) = fmap (,TString) (stringExp (pack s)) >>= \res -> showEnv (return res)
+transExp (StringExp s _) = fmap (,TString) (stringExp (pack s))
 transExp (CallExp nm args p) = do
   (lvl, _, tipos_params, tipo_nm, externa) <- addpos (getTipoFunV nm) p
   args' <- mapM transExp args
@@ -782,8 +782,13 @@ instance Manticore Monada where
       put (oldEst{ vEnv = M.insert sym (Var ventry) (vEnv oldEst) })
       -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
       a <- m
-      -- | Volvemos a poner el entorno viejo
-      put oldEst
+
+      -- | Cambio necesario por la etapa de código intermedio:
+      -- | Obtenemos el nuevo estado luego de computar m
+      newEst <- get
+      -- | Volvemos a poner el entorno viejo en vEnv pero preservando el resto
+      put $ newEst { vEnv = vEnv oldEst }
+
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return a
 
@@ -795,8 +800,13 @@ instance Manticore Monada where
       put (oldEst{ vEnv = M.insert sym (Func fentry) (vEnv oldEst) })
       -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
       res <- m
-      -- | Volvemos a poner el entorno viejo
-      put oldEst
+
+      -- | Cambio necesario por la etapa de código intermedio:
+      -- | Obtenemos el nuevo estado luego de computar m
+      newEst <- get
+      -- | Volvemos a poner el entorno viejo en vEnv pero preservando el resto
+      put $ newEst { vEnv = vEnv oldEst }
+
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return res
 
@@ -807,8 +817,13 @@ instance Manticore Monada where
       put (oldEst{ vEnv = M.insert sym (Var ((TInt RO), acc, lvl)) (vEnv oldEst) })
       -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
       res <- m
-      -- | Volvemos a poner el entorno viejo
-      put oldEst
+
+      -- | Cambio necesario por la etapa de código intermedio:
+      -- | Obtenemos el nuevo estado luego de computar m
+      newEst <- get
+      -- | Volvemos a poner el entorno viejo en vEnv pero preservando el resto
+      put $ newEst { vEnv = vEnv oldEst }
+
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return res
 
@@ -819,8 +834,13 @@ instance Manticore Monada where
       put (oldEst{ tEnv = M.insert sym tipo (tEnv oldEst) })
       -- | ejecutamos la computación que tomamos como argumentos una vez que expandimos el entorno
       res <- m
-      -- | Volvemos a poner el entorno viejo
-      put oldEst
+
+      -- | Cambio necesario por la etapa de código intermedio:
+      -- | Obtenemos el nuevo estado luego de computar m
+      newEst <- get
+      -- | Volvemos a poner el entorno viejo en vEnv pero preservando el resto
+      put $ newEst { tEnv = tEnv oldEst }
+
       -- | retornamos el valor que resultó de ejecutar la monada en el entorno expandido.
       return res
 
