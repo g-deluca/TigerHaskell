@@ -404,6 +404,8 @@ rewriteProgram :: [Instr] -> Frame -> Allocator (([Instr]),Frame)
 rewriteProgram instr frame = do
   wlists <- get
   doSpill (spilledNodes wlists) instr frame
+  let newInitial = S.fromList $ (coloredNodes wlists) ++ (coalescedNodes wlists) ++ (spilledNodes wlists)
+  put wlists {spilledNodes = [], initial = newInitial, coloredNodes = [], coalescedNodes = []}
   return (instr, frame)
     where
       doSpill :: [Temp] -> [Instr] -> Frame -> Allocator ([Instr], Frame)
