@@ -323,19 +323,13 @@ instance (MemM w) => IrGen w where
           , Move (Temp t) (Temp rv)
           ]) (Temp t)
     -- callExp :: Label -> Externa -> Bool -> Level -> [BExp] -> w BExp
-    callExp name external isproc lvl args = do
-        targs <- mapM (\arg -> do earg <- unEx arg
-                                  tmp  <- newTemp
-                                  return (Temp tmp, Move (Temp tmp) earg) ) args
+    callExp name external isproc lvl bargs = do
+        args <- mapM unEx bargs
         -- Obtenemos el nivel del llamante (caller)
         callerLevel  <- getActualLevel
         let
           -- Obtenemos el nivel de "name" (callee)
           calleeLevel   = getNlvl lvl
-          -- Nombre de los temporales que tienen los argumentos
-          args' = List.map fst targs
-          -- Instrucciones de los argumentos
-          ins   = List.map snd targs
           -- Como llamar a la función
           call  = case external of
                        Runtime -> externalCall $ unpack name -- TODO: What's the difference with Call (Name name) ???
@@ -351,13 +345,11 @@ instance (MemM w) => IrGen w where
         case isproc of
             IsProc ->
                 return $ Nx $
-                   seq $ ins ++ [ExpS $ call (slink:args')]
+                   ExpS $ call (slink:args)
             IsFun -> do
                 res <- newTemp
-                return $ Ex $
-                    Eseq
-                        (seq (ins ++ [ExpS (call (slink:args'))
-                                    , Move (Temp res) (Temp rv)]))
+                return $ Ex $ Eseq
+                    (seq [ExpS (call (slink:args)), Move (Temp res) (Temp rv)])
                     (Temp res)
     -- letExp :: [BExp] -> BExp -> w BExp
     letExp [] e = do
