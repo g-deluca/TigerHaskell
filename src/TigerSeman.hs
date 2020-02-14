@@ -928,11 +928,20 @@ instance MemM Monada where
       return $ frags st
 
 
-runMonada :: Monada (BExp, Tipo) -> StGen (Either Symbol (BExp, Tipo))
+runMonada :: Monada a -> StGen (Either Symbol a)
 runMonada =  flip evalStateT initConf . runExceptT
 
 execMonada :: Monada (BExp, Tipo) -> StGen Estado
 execMonada =  flip execStateT initConf . runExceptT
+
+transcribeProgram :: Exp -> Monada [Frag]
+transcribeProgram prog = do
+  (progBody, _) <- transExp prog
+  functionDec progBody outermost IsProc
+  getFrags
+
+runFrags :: Exp -> StGen (Either Symbol [Frag])
+runFrags = runMonada . transcribeProgram
 
 runSeman :: Exp -> StGen (Either Symbol (BExp, Tipo))
 runSeman = runMonada . transExp
@@ -947,3 +956,6 @@ calcularSeman = fst . flip TigerUnique.evalState 0 . runSeman
 
 calcularEstadoSeman :: Exp -> Estado
 calcularEstadoSeman = fst . flip TigerUnique.evalState 0 . execSeman
+
+calcularFrags :: Exp -> Either Symbol [Frag]
+calcularFrags = fst . flip TigerUnique.evalState 0 . runFrags

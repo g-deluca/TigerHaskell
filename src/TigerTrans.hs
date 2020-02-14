@@ -294,10 +294,11 @@ instance (MemM w) => IrGen w where
       tvar <- newTemp
       ti <- newTemp
       return $ Ex $
-          Eseq
-              (seq  [Move (Temp tvar) evar
-                    ,Move (Temp ti) (Const i)
-                    ,ExpS $ externalCall "_checkNil" [Temp tvar]])
+          -- Eseq
+          --   -- TODO: Preguntar/revisar
+          --     (seq  [Move (Temp tvar) evar
+          --           ,Move (Temp ti) (Const i)
+          --           ,ExpS $ externalCall "_checkNil" [Temp tvar]])
               (Mem $ Binop Plus (Temp tvar) (Binop Mul (Temp ti) (Const wSz)))
     -- subscriptVar :: BExp -> BExp -> w BExp
     subscriptVar var ind = do
@@ -512,11 +513,13 @@ instance (MemM w) => IrGen w where
     assignExp cvar cinit = do
         cvara <- unEx cvar
         cin <- unEx cinit
+        trace ("asdasda: " ++ show cvara) (return ())
         case cvara of
             Mem v' ->  do
                 t <- newTemp
                 return $ Nx $ seq [Move (Temp t) cin, Move cvara (Temp t)]
-            _ -> return $ Nx $ Move cvara cin
+            Temp _ -> return $ Nx $ Move cvara cin
+            _ -> fail $ "asdadsads"
     -- binOpIntExp :: BExp -> Abs.Oper -> BExp -> w BExp
     binOpIntExp le op re = do
       ele <- unEx le
