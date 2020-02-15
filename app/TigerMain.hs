@@ -18,6 +18,7 @@ import           TigerPretty
 import           TigerPrettyIr
 import           TigerSeman
 import           TigerTemp
+import           TigerTree (Stm)
 import           TigerUnique
 
 import           Text.Parsec           (runParser)
@@ -32,7 +33,7 @@ data Options =
 
 defaultOptions :: Options
 defaultOptions =
-  Options {optArbol = False, optDebEscap = False, optFrags = False}
+  Options {optArbol = False, optDebEscap = False, optFrags = True}
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -79,12 +80,6 @@ calculoEscapadas rawAST opts =
            return
            (calcularEEsc rawAST)
 
-templabRel :: Exp -> StGen ()
-templabRel ast = do
-  treeS <- runSeman ast
-  -- something <- canonM sometree :: StGen [Stm]
-  return ()
-
 parserStep :: Options -> String -> String -> IO Exp
 parserStep opts nm sc =
   either (\perr -> error $ "Parser error" ++ show perr) return $
@@ -96,6 +91,9 @@ translateStep _ exp = do
     Left s      -> fail $ show s
     Right frags -> return frags
 
+canonStep :: Options -> [Stm] -> IO [Stm]
+canonStep stmts = undefined
+
 main :: IO ()
 main = do
   s:opts <- Env.getArgs
@@ -105,5 +103,10 @@ main = do
   ast <- calculoEscapadas rawAst opts'
   when (optArbol opts') (showExp ast)
   frags <- translateStep opts' ast
-  when (optFrags opts') (showFrags frags)
-  print "Genial!"
+  when (optFrags opts') $ putStrLn (show frags)
+  let (ass, stmts) = sepFrag frags
+  -- Pasos a seguir:
+  -- * Aplicarle canonM a los stmts
+  -- * Emitir código a partir de los stmts canonizados
+  -- * Not sure what's next
+  return ()

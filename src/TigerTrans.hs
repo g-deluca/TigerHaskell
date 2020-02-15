@@ -513,7 +513,6 @@ instance (MemM w) => IrGen w where
     assignExp cvar cinit = do
         cvara <- unEx cvar
         cin <- unEx cinit
-        trace ("asdasda: " ++ show cvara) (return ())
         case cvara of
             Mem v' ->  do
                 t <- newTemp

@@ -223,3 +223,13 @@ canonM st = do
   lin <- linearize st
   lss <- basicBlocks lin
   traceSchedule lss
+
+-- TODO: Preguntar al negro quedé tirando chilenas
+tankCanonizerStep :: Stm -> StGen ([Stm], Unique)
+tankCanonizerStep stm = do
+  stmts <- flip evalStateT firstTank $ canonM stm
+  unique <- get
+  return (stmts, unique)
+
+tankCanonizerEnd :: StGen ([Stm], Unique) -> [Stm]
+tankCanonizerEnd = undefined

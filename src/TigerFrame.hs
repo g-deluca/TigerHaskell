@@ -161,13 +161,14 @@ externalCall s = Call (Name $ pack s)
 -- Dependiendo de la arquitectura algunos pueden ir por memoria o por stack. Salvo obviamente
 -- que escapen, en ese caso tienen que ir a memoria.
 allocArg :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
-allocArg fr Escapa =
+allocArg fr _ =
   let actual = actualArg fr
       acc    = InFrame $ actual * wSz + argsGap
   in  return (fr { actualArg = actual + 1 }, acc)
-allocArg fr NoEscapa = do
-  s <- newTemp
-  return (fr, InReg s)
+-- No necesitamos este caso debido a la arquitectura
+-- allocArg fr NoEscapa = do
+--   s <- newTemp
+--   return (fr, InReg s)
 
 allocLocal :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
 allocLocal fr Escapa =

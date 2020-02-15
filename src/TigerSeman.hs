@@ -759,6 +759,7 @@ initConf = Est
                     ,(pack "not",Func (outermost,pack "not",[TBool],TBool,Runtime))
                     ,(pack "exit",Func (outermost,pack "exit",[TInt RW],TUnit,Runtime))
                     ]
+            -- TODO: Preguntar al negro me pegó todo no entiendo nada
            , nlevel = -1
            , level = [outermost]
            , salida = []
