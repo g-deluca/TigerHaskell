@@ -297,10 +297,12 @@ transDecs (FunctionDec fs : xs) m =
 
     insert_headers [] m = m
     insert_headers as@((nm, args, mty, _body, p):fs) m =  do
-      level <- topLevel
-      tipo_args <- mapM (\(_, _, ty) -> transTy ty) args
+      fatherLevel <- topLevel
+      tipoArgs <- mapM (\(_, _, ty) -> transTy ty) args
+      let escape_args = P.map (\(_, esc,_ ) -> esc) args
       let func_names = List.map (\(nm, _, _, _, _) -> nm) as
       let rep_names = repeatedNames func_names
+      let functionLevel = newLevel fatherLevel nm escape_args
       when  (rep_names /= [])
             (errorTiposGeneric
               p
@@ -309,9 +311,9 @@ transDecs (FunctionDec fs : xs) m =
       case mty of
         Just s -> do
           tipo_s <- flip addpos p $ getTipoT s
-          insertFunV nm (level, nm, tipo_args, tipo_s, Propia) (insert_headers fs m)
+          insertFunV nm (functionLevel, nm, tipoArgs, tipo_s, Propia) (insert_headers fs m)
         Nothing ->
-          insertFunV nm (level, nm, tipo_args, TUnit, Propia) (insert_headers fs m)
+          insertFunV nm (functionLevel, nm, tipoArgs, TUnit, Propia) (insert_headers fs m)
 
     insert_args [] m = m
     insert_args ((nm, tipo, escapa):args) m = do
@@ -321,19 +323,15 @@ transDecs (FunctionDec fs : xs) m =
 
     insert_bodies [] m = m
     insert_bodies ((nm, args, _mty, body, p):fs) m = do
-      lvl <- topLevel
-      let new_lvl = newLevel lvl nm $ List.map (\(_, escapa, _) -> escapa) args
-      -- TODO: Está bien hacer esto acá? Quizás debería hacerse antes de procesar los headers
-      -- TODO: Revisar que el batch se ponga en el mismo Level
-      envFunctionDec new_lvl ( do
+      (functionLvl, _, _, _, _) <- getTipoFunV nm
+      envFunctionDec functionLvl ( do
         tipo_args <- mapM (\(arg_nm, escapa, ty) -> transTy ty >>= (\ tipo -> return (arg_nm, tipo, escapa))) args
         (bexp_body, tipo_body) <- insert_args tipo_args (transExp body)
         -- Chequeamos que tipo_body coincida con el declarado
         (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
         unless (equivTipo tipo_nm tipo_body)
                 (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
-        -- TODO: le estamos pasando el lvl correcto?
-        functionDec bexp_body new_lvl (determineIfProc tipo_nm))
+        functionDec bexp_body functionLvl (determineIfProc tipo_nm))
       insert_bodies fs m
   in insert_headers fs (insert_bodies fs (transDecs xs m))
 
@@ -730,7 +728,7 @@ data Estado = Est {
   vEnv :: M.Map Symbol EnvEntry,
   tEnv :: M.Map Symbol Tipo,
   nlevel :: Int,
-  level :: [Level],
+  level :: Level,
   salida :: [Maybe Label],
   frags :: [Frag]
   }
@@ -759,9 +757,8 @@ initConf = Est
                     ,(pack "not",Func (outermost,pack "not",[TBool],TBool,Runtime))
                     ,(pack "exit",Func (outermost,pack "exit",[TInt RW],TUnit,Runtime))
                     ]
-            -- TODO: Preguntar al negro me pegó todo no entiendo nada
            , nlevel = -1
-           , level = [outermost]
+           , level = outermost
            , salida = []
            , frags = []
            }
@@ -909,10 +906,10 @@ instance MemM Monada where
     -- -- eventualmente va a ser el marco de activación
     pushLevel lvl = do
       st <- get
-      put $ st {level = lvl:(level st)}
+      put $ st {level = lvl}
     topLevel = do
       st <- get
-      return $ head (level st)
+      return $ level st
     popLevel = do
       st <- get
       put $ st {level = tail (level st)}
