@@ -291,28 +291,24 @@ instance (MemM w) => IrGen w where
     -- fieldVar :: BExp -> Int -> w BExp
     fieldVar var i = do
       evar <- unEx var
-      tvar <- newTemp
-      ti <- newTemp
       return $ Ex $
           -- Eseq
           --   -- TODO: Preguntar/revisar
           --     (seq  [Move (Temp tvar) evar
           --           ,Move (Temp ti) (Const i)
           --           ,ExpS $ externalCall "_checkNil" [Temp tvar]])
-              (Mem $ Binop Plus (Temp tvar) (Binop Mul (Temp ti) (Const wSz)))
+              (Mem $ Binop Plus evar (Binop Mul (Const i) (Const wSz)))
     -- subscriptVar :: BExp -> BExp -> w BExp
     subscriptVar var ind = do
         evar <- unEx var
         eind <- unEx ind
-        tvar <- newTemp
-        tind <- newTemp
         return $ Ex $
-            Eseq
-                (seq    [Move (Temp tvar) evar
-                        ,Move (Temp tind) eind
-                        -- Cambiamos "_checkIndex" por "_checkIndexArray", is it ok?
-                        ,ExpS $ externalCall "_checkIndexArray" [Temp tvar, Temp tind]])
-                (Mem $ Binop Plus (Temp tvar) (Binop Mul (Temp tind) (Const wSz)))
+            -- Eseq
+            --     (seq    [Move (Temp tvar) evar
+            --             ,Move (Temp tind) eind
+            --             -- Cambiamos "_checkIndex" por "_checkIndexArray", is it ok?
+            --             ,ExpS $ externalCall "_checkIndexArray" [Temp tvar, Temp tind]])
+                (Mem $ Binop Plus evar (Binop Mul eind (Const wSz)))
     -- recordExp :: [(BExp,Int)]  -> w BExp
     recordExp flds = do
         let size = Const $ List.length flds
@@ -518,7 +514,7 @@ instance (MemM w) => IrGen w where
                 t <- newTemp
                 return $ Nx $ seq [Move (Temp t) cin, Move cvara (Temp t)]
             Temp _ -> return $ Nx $ Move cvara cin
-            _ -> fail $ "asdadsads"
+            a -> fail $ show a
     -- binOpIntExp :: BExp -> Abs.Oper -> BExp -> w BExp
     binOpIntExp le op re = do
       ele <- unEx le

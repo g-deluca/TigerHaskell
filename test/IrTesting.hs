@@ -17,12 +17,13 @@ main :: IO ()
 main
   -- testGood "./test/test_code/" testEstado "merge.tig"
  =
-  putStrLn "\n==== Good loc (Estado) ====" >>
+  -- putStrLn "\n==== Good loc (Estado) ====" >>
   -- testDir good_loc (testIr good_loc tester)
-  testDir working_loc (testFragsIr working_loc testerFrags)
+  -- testDir working_loc (testFragsIr working_loc testerFrags)
 
---   putStrLn "\n==== Good loc ====" >>
---   testDir working_loc (testIr good_loc tester)
+  putStrLn "\n==== Good loc ====" >>
+  testDir good_loc (testIr good_loc tester)
+
 testIr ::
      Show a => String -> (String -> Either a (BExp, Tipo)) -> String -> IO ()
 testIr loc = test loc (badRes . show) (goodRes . renderBIr . fst)
