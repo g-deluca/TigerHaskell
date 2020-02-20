@@ -6,6 +6,7 @@ module TigerCanon
   ( linearize     -- | Stm -> [Stm]
   , basicBlocks   -- | [Stm] -> ([[Stm]] , Label)
   , traceSchedule -- | ( [[Stm]] , Label) -> [Stm]
+  , tankCanonizer
   )
 where
 
@@ -224,12 +225,6 @@ canonM st = do
   lss <- basicBlocks lin
   traceSchedule lss
 
--- TODO: Preguntar al negro quedé tirando chilenas
-tankCanonizerStep :: Stm -> StGen ([Stm], Unique)
-tankCanonizerStep stm = do
-  stmts <- flip evalStateT firstTank $ canonM stm
-  unique <- get
-  return (stmts, unique)
-
-tankCanonizerEnd :: StGen ([Stm], Unique) -> [Stm]
-tankCanonizerEnd = undefined
+tankCanonizer :: Stm -> StGen [Stm]
+tankCanonizer stm = do
+   flip evalStateT firstTank $ canonM stm

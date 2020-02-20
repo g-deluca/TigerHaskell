@@ -1,11 +1,11 @@
-{-# Language MultiParamTypeClasses #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module TigerUnique where
 
+import           Control.Monad.State.Class hiding (modify)
 import           Control.Monad.Trans
-import           Control.Monad.State.Class
-                                         hiding ( modify )
 
-import           State                         as St
+import           State                     as St
 
 -- | Los 'Uniques' nos vendrán bien para definir números que supondremos únicos.
 -- Ya que los vamos a usar a lo largo del compilador, voy a definir una mónada
@@ -14,7 +14,6 @@ import           State                         as St
 -- ya que eso nos traería problemas con la instancia de Transformer definida
 -- más abajo. Porque 'State a = StateT Identity a'.
 -- Es más para que no se use mucho este 'State' lo separo en otro archivo.
-
 evalState :: State s a -> s -> (a, s)
 evalState = runSt
 
@@ -34,7 +33,7 @@ type StGen = State Integer
 
 -- | Damos la instancia inicial de que es un generador de Uniques.
 instance UniqueGenerator StGen where
-  mkUnique = modify (+1) >> St.get
+  mkUnique = modify (+ 1) >> St.get
 
 -- | Y acá viene la magia... Ya que vamos a usar monad transformers.
 -- Doy una instancia general que los recorre hasta llegar a un generador de uniques,
@@ -44,6 +43,6 @@ instance UniqueGenerator StGen where
 -- para generar uniques tendríamos que llamar a (lift (lift (lift mkUnique)))
 -- pero como nos da pereza hacer eso, hacemos que lo haga Haskell por nosotros.
 -- y así queda la onda:
-instance (Monad m , MonadTrans t , UniqueGenerator m)
-         => UniqueGenerator (t m) where
+instance (Monad m, MonadTrans t, UniqueGenerator m) =>
+         UniqueGenerator (t m) where
   mkUnique = lift mkUnique

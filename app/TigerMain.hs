@@ -10,15 +10,19 @@ import           System.Console.GetOpt
 import qualified System.Environment    as Env
 import           System.Exit
 
+import Assem
+
 import           TigerAbs
+import           TigerCanon
 import           TigerEscap
 import           TigerFrame
 import           TigerParser
 import           TigerPretty
 import           TigerPrettyIr
 import           TigerSeman
+import TigerMunch
 import           TigerTemp
-import           TigerTree (Stm)
+import           TigerTree             (Stm)
 import           TigerUnique
 
 import           Text.Parsec           (runParser)
@@ -33,7 +37,7 @@ data Options =
 
 defaultOptions :: Options
 defaultOptions =
-  Options {optArbol = False, optDebEscap = False, optFrags = True}
+  Options {optArbol = False, optDebEscap = False, optFrags = False}
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -85,14 +89,29 @@ parserStep opts nm sc =
   either (\perr -> error $ "Parser error" ++ show perr) return $
   runParser expression () nm sc
 
-translateStep :: Options -> Exp -> IO [Frag]
+translateStep :: Options -> Exp -> StGen [Frag]
 translateStep _ exp = do
-  case calcularFrags exp of
+  eitherFrags <- runFrags exp
+  case eitherFrags of
     Left s      -> fail $ show s
     Right frags -> return frags
 
-canonStep :: Options -> [Stm] -> IO [Stm]
-canonStep stmts = undefined
+canonStep :: Options -> [Stm] -> StGen [[Stm]]
+canonStep _ stmts = mapM tankCanonizer stmts
+
+munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
+munchStep _ stmtss = mapM runMordisco stmtss
+
+tiger :: Options -> Exp -> StGen [[Instr]]
+tiger opt exp = do
+  frags <- translateStep opt exp
+  let (ass, stmtsWithFrags) = sepFrag frags
+  let (stmts, frags) = unzip stmtsWithFrags
+  canonStmts <- canonStep opt stmts
+  munchStep opt canonStmts
+
+runTiger :: Options -> Exp -> IO [[Instr]]
+runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
 
 main :: IO ()
 main = do
@@ -102,9 +121,8 @@ main = do
   rawAst <- parserStep opts' s sourceCode
   ast <- calculoEscapadas rawAst opts'
   when (optArbol opts') (showExp ast)
-  frags <- translateStep opts' ast
-  when (optFrags opts') $ putStrLn (show frags)
-  let (ass, stmts) = sepFrag frags
+  something <- runTiger opts' ast
+  when (optFrags opts') $ putStrLn (show something)
   -- Pasos a seguir:
   -- * Aplicarle canonM a los stmts
   -- * Emitir código a partir de los stmts canonizados

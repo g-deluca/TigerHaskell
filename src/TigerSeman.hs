@@ -331,7 +331,8 @@ transDecs (FunctionDec fs : xs) m =
         (_, _, _, tipo_nm, _) <- flip addpos p $ getTipoFunV nm
         unless (equivTipo tipo_nm tipo_body)
                 (errorTiposMsg p ("En la declaracion de " ++ unpack nm ++ ". ") tipo_nm tipo_body)
-        functionDec bexp_body functionLvl (determineIfProc tipo_nm))
+        functionLvlWithArgs <- topLevel
+        functionDec bexp_body functionLvlWithArgs (determineIfProc tipo_nm))
       insert_bodies fs m
   in insert_headers fs (insert_bodies fs (transDecs xs m))
 
