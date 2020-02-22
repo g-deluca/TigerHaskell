@@ -102,15 +102,16 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
-tiger :: Options -> Exp -> StGen [[Instr]]
+-- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do
   frags <- translateStep opt exp
   let (ass, stmtsWithFrags) = sepFrag frags
   let (stmts, frags) = unzip stmtsWithFrags
   canonStmts <- canonStep opt stmts
-  munchStep opt canonStmts
+  munchStmts <- munchStep opt canonStmts
+  return $ zip munchStmts frags
 
-runTiger :: Options -> Exp -> IO [[Instr]]
+-- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
 
 main :: IO ()
