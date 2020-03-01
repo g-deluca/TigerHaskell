@@ -467,24 +467,24 @@ rewriteProgram instr frame = do
           ojump = Nothing
       }
 
-finiquitar :: [Instr] -> Frame -> Allocator ()
-finiquitar instr frame = do
+allocate :: [Instr] -> Frame -> Allocator ()
+allocate instr frame = do
   let (flowGraph, _nodes) = instrs2graph instr
       livenessMap = calculateLiveness flowGraph
   build flowGraph livenessMap
   makeWorklist
-  repeatFiniquitar
+  repeatAllocate
   assignColors
   wlists <- get
   when (spilledNodes wlists /= []) $ do
     (newInstr, newFrame) <- rewriteProgram instr frame
-    finiquitar newInstr newFrame
+    allocate newInstr newFrame
     where
-      repeatFiniquitar :: Allocator ()
-      repeatFiniquitar = do
+      repeatAllocate :: Allocator ()
+      repeatAllocate = do
         step
         condition <- check
-        if condition then return () else repeatFiniquitar
+        if condition then return () else repeatAllocate
       step :: Allocator ()
       step = do
         wlists <- get
@@ -498,3 +498,6 @@ finiquitar instr frame = do
         wlists <- get
         return ((simplifyWorklist wlists) == [] && (worklistMoves wlists) == [] &&
                 (freezeWorklist wlists) == [] && (spillWorklist wlists) == [])
+
+runAllocator :: [Instr] -> Frame -> Worklists
+runAllocator instrs frame = undefined

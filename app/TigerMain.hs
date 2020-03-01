@@ -10,17 +10,17 @@ import           System.Console.GetOpt
 import qualified System.Environment    as Env
 import           System.Exit
 
-import Assem
+import           Assem
 
 import           TigerAbs
 import           TigerCanon
 import           TigerEscap
 import           TigerFrame
+import           TigerMunch
 import           TigerParser
 import           TigerPretty
 import           TigerPrettyIr
 import           TigerSeman
-import TigerMunch
 import           TigerTemp
 import           TigerTree             (Stm)
 import           TigerUnique
@@ -105,11 +105,12 @@ munchStep _ stmtss = mapM runMordisco stmtss
 -- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do
   frags <- translateStep opt exp
-  let (ass, stmtsWithFrags) = sepFrag frags
-  let (stmts, frags) = unzip stmtsWithFrags
+  let (ass, stmtsWithFrames) = sepFrag frags
+  let (stmts, frames) = unzip stmtsWithFrames
   canonStmts <- canonStep opt stmts
   munchStmts <- munchStep opt canonStmts
-  return $ zip munchStmts frags
+  return $ zip munchStmts frames
+  -- return  frags
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
@@ -123,9 +124,6 @@ main = do
   ast <- calculoEscapadas rawAst opts'
   when (optArbol opts') (showExp ast)
   something <- runTiger opts' ast
-  when (optFrags opts') $ putStrLn (show something)
-  -- Pasos a seguir:
-  -- * Aplicarle canonM a los stmts
-  -- * Emitir código a partir de los stmts canonizados
-  -- * Not sure what's next
+  when (optFrags opts') $ putStrLn $ show something
+  -- when (optFrags opts') $ showFrags something
   return ()

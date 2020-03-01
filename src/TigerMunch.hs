@@ -8,6 +8,7 @@ import           TigerTree           as T
 import           TigerUnique
 
 import           Control.Monad.State
+import           Data.Text           (unpack)
 
 class (Monad w, TLGenerator w) =>
       InstrEmitter w
@@ -234,16 +235,17 @@ munchExp (T.Binop T.XOr el er) = do
     Oper
       {oassem = "xor d0, s0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
-munchExp (T.Call e args)
+munchExp (T.Call (Name n) args)
     -- Primero guardamos en stack los callersaves
- = do
-  pushList callersaves
+  -- TODO: Creo que pushList y popList es lo que deberíamos hacer en la función procEntryExit2 o alguna de esas
+  -- pushList callersaves
     -- Ahora los argumentos van a stack
+ = do
   munchArgs args
     -- Llamamos a la función
   emit $
     Oper
-      { oassem = "call " ++ show e ++ "\n"
+      { oassem = "call " ++ unpack n ++ "\n"
       , osrc = []
       , odst = calldefs
       , ojump = Nothing
@@ -259,7 +261,7 @@ munchExp (T.Call e args)
       }
     -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
     -- The caller can assume that no other registers were modified by the subroutine.
-  popList (reverse callersaves)
+  -- popList (reverse callersaves)
   return eax
 munchExp _ = error "No implementado ni con planes de hacerlo"
 
@@ -288,7 +290,9 @@ tragar :: Mordisco [Instr] -> StGen [Instr]
 tragar = flip execStateT []
 
 runMordisco :: [Stm] -> StGen [Instr]
-runMordisco = tragar . masticar
+runMordisco stmts = do
+  instrs <- tragar $ masticar stmts
+  return $ reverse instrs
 
 --------------------------
 -- #######################

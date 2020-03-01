@@ -345,9 +345,7 @@ instance (MemM w) => IrGen w where
                    ExpS $ call (slink:args)
             IsFun -> do
                 res <- newTemp
-                return $ Ex $ Eseq
-                    (seq [ExpS (call (slink:args)), Move (Temp res) (Temp rv)])
-                    (Temp res)
+                return $ Ex $ call (slink:args)
     -- letExp :: [BExp] -> BExp -> w BExp
     letExp [] e = do
       -- Des-empaquetar y empaquetar como un |Ex| puede generar

@@ -11,6 +11,38 @@ import           Prelude                 hiding ( exp )
 
 --
 
+--                        +--------------+
+--                          |              |
+--                     +    |              |
+--                     |    +--------------+
+--                     |    |              |
+--                     |    |   arg(N-1)   |  starts from 7'th argument for x86_64
+--                     |    |              |
+--                     |    +--------------+
+--                     |    |              |
+--                     |    |     argN     |
+--                     |    |              |
+--                     |    +--------------+
+--                     |    |              |
+--                     |    |Return address|  %rbp + 8
+-- Stack grows down    |    |              |
+--                     |    +--------------+
+--                     |    |              |
+--                     |    |     %rbp     |  Frame base pointer
+--                     |    |              |
+--                     |    +--------------+
+--                     |    |              |
+--                     |    |  local var1  |  %rbp - 8
+--                     |    |              |
+--                     |    +--------------+
+--                     |    |              |
+--                     |    | local ^ar 2  | <-- %rsp
+--                     |    |              |
+--                     v    +--------------+
+--                          |              |
+--                          |              |
+--                          +--------------+
+
 -- | Registros muy usados.
 rv, fp, sp, bp :: Temp
 
