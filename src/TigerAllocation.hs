@@ -13,15 +13,13 @@ import Data.Set as S
 import Data.List as L
 import Control.Monad.State
 
-k = 6
-
 data Worklists = Worklists {
 
     -- TODO: ya que en build() tenemos flowGraph y LivenessMap, armamos el interferencaGraph y lo tenemos acá?
 
     -- Custom
     -- lista de colores disponibles
-    okColors :: S.Set Int,
+    okColors :: S.Set Temp,
     -- Node worklists, sets and stacks. The following
     -- lists and sets are always mutually disjoint and every node is always
     -- in exactly on of the sets or lists.
@@ -74,16 +72,26 @@ data Worklists = Worklists {
     alias :: M.Map Temp Temp,
     -- the color chosen by the algorithm for a node;
     -- for precolored nodes this is initialized to the given color
-    color :: M.Map Temp Int
+    color :: M.Map Temp Temp
 
 }
 
 type Allocator = StateT Worklists StGen
 
+colors :: [Temp]
+colors = callersaves ++ calleesaves ++ argregs
+
+precolors :: [Temp]
+precolors = allRegs
+
+k :: Int
+k = L.length colors
+
+
 setOkColors :: Allocator ()
 setOkColors = do
   wlists <- get
-  put wlists { okColors = S.fromList [0..(k-1)] }
+  put wlists { okColors = S.fromList colors }
 
 build :: FlowGraph Instr -> LivenessMap -> Allocator ()
 build flowGraph livenessMap =
@@ -356,7 +364,6 @@ selectSpill = do
       newSimplifyWorklist = (simplifyWorklist wlists) ++ [m]
   freezeMoves m
 
--- work in progress de ak pa abajo
 assignColors :: Allocator ()
 assignColors = do
   wlists <- get
@@ -400,13 +407,14 @@ doAssignColors sStack = do
         let newOkColors = (okColors wlists) S.\\ (S.singleton $ (color wlists) M.! wAlias)
         put wlists {okColors = newOkColors}
 
-rewriteProgram :: [Instr] -> Frame -> Allocator (([Instr]),Frame)
+rewriteProgram :: [Instr] -> Frame -> Allocator ([Instr],Frame)
 rewriteProgram instr frame = do
   wlists <- get
-  doSpill (spilledNodes wlists) instr frame
+  -- Allocate memory locations for each spilledNodes
+  (newInstr, newFrame) <- doSpill (spilledNodes wlists) instr frame
   let newInitial = S.fromList $ (coloredNodes wlists) ++ (coalescedNodes wlists) ++ (spilledNodes wlists)
   put wlists {spilledNodes = [], initial = newInitial, coloredNodes = [], coalescedNodes = []}
-  return (instr, frame)
+  return (newInstr, newFrame)
     where
       doSpill :: [Temp] -> [Instr] -> Frame -> Allocator ([Instr], Frame)
       doSpill [] instr frame = return (instr, frame)
@@ -453,7 +461,7 @@ rewriteProgram instr frame = do
 
       pop :: Temp -> Instr
       pop t = Oper {
-        oassem = "pop d0\n",
+        oassem = "popq d0\n",
         osrc = [],
         odst = [t, sp],
         ojump = Nothing
@@ -461,7 +469,7 @@ rewriteProgram instr frame = do
 
       push :: Temp -> Instr
       push t = Oper {
-          oassem = "push s0\n",
+          oassem = "pushq s0\n",
           osrc = [t],
           odst = [sp],
           ojump = Nothing
@@ -499,5 +507,71 @@ allocate instr frame = do
         return ((simplifyWorklist wlists) == [] && (worklistMoves wlists) == [] &&
                 (freezeWorklist wlists) == [] && (spillWorklist wlists) == [])
 
-runAllocator :: [Instr] -> Frame -> Worklists
-runAllocator instrs frame = undefined
+
+initState :: S.Set Temp -> Worklists
+initState initialRegs = Worklists {
+    okColors = S.empty,
+    precolored = S.fromList precolors,
+    -- initial :: S.Set Temp,
+    initial = initialRegs,
+    -- simplifyWorklist :: [Temp],
+    simplifyWorklist = [],
+    -- freezeWorklist :: [Temp],
+    freezeWorklist = [],
+    -- spillWorklist :: [Temp],
+    spillWorklist = [],
+    -- spilledNodes :: [Temp],
+    spilledNodes = [],
+    -- coalescedNodes :: [Temp],
+    coalescedNodes = [],
+    -- coloredNodes :: [Temp],
+    coloredNodes = [],
+    -- selectStack :: [Temp],
+    selectStack = [],
+    -- coalescedMoves :: [Node Instr],
+    coalescedMoves = [],
+    -- constrainedMoves :: [Node Instr],
+    constrainedMoves = [],
+    -- frozenMoves :: [Node Instr],
+    frozenMoves = [],
+    -- worklistMoves :: [Node Instr],
+    worklistMoves = [],
+    -- activeMoves :: [Node Instr],
+    activeMoves = [],
+    -- adjSet :: S.Set (Temp, Temp),
+    adjSet = S.empty,
+    -- adjList :: M.Map Temp (S.Set Temp),
+    adjList = M.empty,
+    -- degree :: M.Map Temp Int,
+    degree = M.empty,
+    -- moveList :: M.Map Temp [Node Instr],
+    moveList = M.empty,
+    alias = M.empty,
+    color = M.fromList (zip precolors precolors)
+}
+
+
+-- runAllocator :: Allocator -> Frame -> [Instr] -> Worklists
+-- runAllocator frame instr = undefined
+
+
+-- runMonada :: Monada a -> StGen (Either Symbol a)
+-- runMonada =  flip evalStateT initConf . runExceptT
+
+-- execMonada :: Monada (BExp, Tipo) -> StGen Estado
+-- execMonada =  flip execStateT initConf . runExceptT
+
+-- transcribeProgram :: Exp -> Monada [Frag]
+-- transcribeProgram prog = do
+--   (progBody, _) <- transExp prog
+--   functionDec progBody outermost IsProc
+--   getFrags
+
+-- runFrags :: Exp -> StGen (Either Symbol [Frag])
+-- runFrags = runMonada . transcribeProgram
+
+-- runSeman :: Exp -> StGen (Either Symbol (BExp, Tipo))
+-- runSeman = runMonada . transExp
+
+-- execSeman :: Exp -> StGen Estado
+-- execSeman = execMonada . transExp

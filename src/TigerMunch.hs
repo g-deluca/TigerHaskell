@@ -30,7 +30,7 @@ munchStm (ExpS e) = void $ munchExp e
 munchStm (T.Move e1 e2) = do
   stm1 <- munchExp e1
   stm2 <- munchExp e2
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = stm2, mdst = stm1}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = stm2, mdst = stm1}
 munchStm (Jump (Name _) label) = do
   emit $
     Oper
@@ -39,14 +39,14 @@ munchStm (Jump (Name _) label) = do
       , odst = []
       , ojump = Just [label]
       }
-  return ()
+  -- return ()
 munchStm (CJump relop e1 e2 l1 l2) = do
   te1 <- munchExp e1
   te2 <- munchExp e2
     -- Primero realizo la comparación
   emit $
     Oper
-      {oassem = "cmp s0, s1\n", osrc = [te1, te2], odst = [], ojump = Nothing}
+      {oassem = "cmpq s0, s1\n", osrc = [te1, te2], odst = [], ojump = Nothing}
     -- Saltamos dependiendo del tipo de operacion fue True
   let assemRelOp = relop2assem relop
   emit $
@@ -65,17 +65,17 @@ munchStm (CJump relop e1 e2 l1 l2) = do
       , odst = []
       , ojump = Just [l2]
       }
-  return ()
+  -- return ()
 munchStm (T.Label label) = do
   emit $ A.Label {lassem = makeStringL label ++ ":\n", llab = label}
-  return ()
+  -- return ()
 
 munchExp :: InstrEmitter w => Exp -> w Temp
 munchExp (Const i) = do
   r <- newTemp
   emit $
     Oper
-      { oassem = "mov d0, " ++ show i ++ "\n"
+      { oassem = "movq $" ++ show i ++ ", d0\n"
       , osrc = []
       , odst = [r]
       , ojump = Nothing
@@ -85,8 +85,8 @@ munchExp (Name l) = do
   r <- newTemp
   emit $
     Oper
-        -- TODO: Googlear un poco más offset
-      { oassem = "mov d0, OFFSET " ++ show l ++ "\n"
+      -- TODO: Esto es cargar algo del .data ?
+      { oassem = "movq " ++ show l ++ ", d0\n"
       , osrc = []
       , odst = [r]
       , ojump = Nothing
@@ -99,7 +99,7 @@ munchExp (T.Mem (T.Binop T.Plus e (T.Const i))) = do
   te <- munchExp e
   emit $
     Oper
-      { oassem = "mov d0, [s0 + " ++ show i ++ "]\n"
+      { oassem = "movq (s0, $" ++ show i ++ "), d0\n" -- movq (s0, $i), d0 => d0 = Mem[s0 + $i]
       , osrc = [te]
       , odst = [res]
       , ojump = Nothing
@@ -112,7 +112,7 @@ munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
   te <- munchExp e
   emit $
     Oper
-      { oassem = "mov d0, [s0 + " ++ show i ++ "]\n"
+      { oassem = "movq (s0, $" ++ show i ++ "), d0\n"
       , osrc = [te]
       , odst = [res]
       , ojump = Nothing
@@ -122,7 +122,7 @@ munchExp (T.Mem (T.Const i)) = do
   res <- newTemp
   emit $
     Oper
-      { oassem = "mov d0, [" ++ show i ++ "]\n"
+      { oassem = "movq $" ++ show i ++ ", d0\n"
       , osrc = []
       , odst = [res]
       , ojump = Nothing
@@ -132,137 +132,133 @@ munchExp (T.Mem e) = do
   te <- munchExp e
   res <- newTemp
   emit $
-    Oper {oassem = "mov d0, [s0]\n", osrc = [te], odst = [res], ojump = Nothing}
+    Oper {oassem = "movq s0, d0\n", osrc = [te], odst = [res], ojump = Nothing}
   return res
 -- Arrancamo' con Binop...
 munchExp (T.Binop T.Plus el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-    -- TODO: ¿Usar move?
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = res}
-  emit $
-    Oper
-      {oassem = "add d0, s0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+  -- en d0 pongo el valor de s0, res = tl
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  -- en d0 = (d0) + (s0)
+  emit $ Oper {oassem = "addq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.Minus el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "sub d0, s0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      {oassem = "subq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 -------------
 -- Pequeña optimización ;)
-munchExp (T.Binop T.Mul (Const i) er) = do
-  tr <- munchExp er
-  res <- newTemp
-  emit $
-    Oper
-      { oassem = "imul d0, s0, " ++ show i ++ "\n"
-      , osrc = [tr]
-      , odst = [res]
-      , ojump = Nothing
-      }
-  return res
-munchExp (T.Binop T.Mul el (Const i)) = do
-  tl <- munchExp el
-  res <- newTemp
-  emit $
-    Oper
-      { oassem = "imul d0, s0, " ++ show i ++ "\n"
-      , osrc = [tl]
-      , odst = [res]
-      , ojump = Nothing
-      }
-  return res
+-- TODO: Anda a chequearla, no la encuentro en x86_64
+-- munchExp (T.Binop T.Mul (Const i) er) = do
+--   tr <- munchExp er
+--   res <- newTemp
+--   emit $
+--     Oper
+--       { oassem = "imulq d0, (s0), $" ++ show i ++ "\n"
+--       , osrc = [tr]
+--       , odst = [res]
+--       , ojump = Nothing
+--       }
+--   return res
+-- munchExp (T.Binop T.Mul el (Const i)) = do
+--   tl <- munchExp el
+--   res <- newTemp
+--   emit $
+--     Oper
+--       { oassem = "imulq d0, (s0), $" ++ show i ++ "\n"
+--       , osrc = [tl]
+--       , odst = [res]
+--       , ojump = Nothing
+--       }
+--   return res
 -------------
 munchExp (T.Binop T.Mul el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "imul d0, s0\n"
+      { oassem = "imulq s0, d0\n"
       , osrc = [tr, res]
       , odst = [res]
       , ojump = Nothing
       }
   return res
-munchExp (T.Binop T.Div el er)
-    -- idiv reg1 --> (eax:edx)/reg1
-    -- pongo 0's en eax porque no me interesa dividir en 64bits
- = do
+munchExp (T.Binop T.Div el er) = do
+  -- idivq divisor --> (rdx:rax) / divisor => rax resultado, rdx resto
   tl <- munchExp el
   tr <- munchExp er
-  emit $ Oper {oassem = "mov d0, 0\n", osrc = [], odst = [eax], ojump = Nothing}
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = edx}
+  -- pongo 0's en rax porque no me interesa dividir en 128bits
+  emit $ Oper {oassem = "movq $0, d0\n", osrc = [], odst = [rax], ojump = Nothing}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = rdx}
   emit $
     Oper
-      { oassem = "idiv s0\n"
+      { oassem = "idivq s0\n"
       , osrc = [tr]
-      , odst = [eax, edx] -- [division, resto]
+      , odst = [rax, rdx] -- [division, resto]
       , ojump = Nothing
       }
-  return eax
+  return rax
 munchExp (T.Binop T.And el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "and d0, s0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      {oassem = "andq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "or d0, s0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      {oassem = "orq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.XOr el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "mov d0, s0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "xor d0, s0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      {oassem = "xorq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
-munchExp (T.Call (Name n) args)
-    -- Primero guardamos en stack los callersaves
-  -- TODO: Creo que pushList y popList es lo que deberíamos hacer en la función procEntryExit2 o alguna de esas
-  -- pushList callersaves
-    -- Ahora los argumentos van a stack
- = do
-  munchArgs args
-    -- Llamamos a la función
+-- Esta es la parte callee (ya entre a la funcion que fue llamada, que hago antes y despues?)
+munchExp (T.Call (Name n) args) = do
+  -- Llamada a procedimiento -- devuelve algo
+  -- TODO: Esto lo debería hacer el caller, si lo hago primero acá no hay problema?
+  argRegs <- munchArgs args
+  -- Llamamos a la función
   emit $
     Oper
-      { oassem = "call " ++ unpack n ++ "\n"
+      { oassem = "callq " ++ unpack n ++ "\n"
       , osrc = []
       , odst = calldefs
       , ojump = Nothing
       }
-    -- Remove the parameters from stack. This restores the stack to its state before the call was performed.
-    -- Muevo el stack-pointer lo suficiente para que se "olvide" de los parametros
+  -- Remove the parameters from stack. This restores the stack to its state before the call was performed.
+  -- Muevo el stack-pointer lo suficiente para que se "olvide" de los parametros
   emit $
     Oper
-      { oassem = "add s0 " ++ (show (length args * wSz)) ++ "\n"
+      { oassem = "addq $" ++ (show (length argRegs * wSz)) ++ ", d0\n"
       , osrc = []
       , odst = [sp]
       , ojump = Nothing
       }
-    -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
-    -- The caller can assume that no other registers were modified by the subroutine.
-  -- popList (reverse callersaves)
-  return eax
+  -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
+  -- The caller can assume that no other registers were modified by the subroutine.
+  return rax
 munchExp _ = error "No implementado ni con planes de hacerlo"
 
 -- | Definimos la mónada que instanciaremos en Emitter. Le puse Mordisco
@@ -294,50 +290,65 @@ runMordisco stmts = do
   instrs <- tragar $ masticar stmts
   return $ reverse instrs
 
+
 --------------------------
 -- #######################
 -- Auxiliares
 -- #######################
 --------------------------
--- To pass parameters to the subroutine, push them onto the stack before the call.
--- The parameters should be pushed in inverted order (i.e. last parameter first).
--- Since the stack grows down, the first parameter will be stored at the lowest address
--- (this inversion of parameters was historically used to allow functions to be passed a variable number of parameters).
-munchArgs :: InstrEmitter e => [Exp] -> e ()
-munchArgs [] = return ()
-munchArgs args = do
-  arg <- munchExp (last args)
-  emit $
-    Oper
-      { oassem = "push d0\n"
-      , osrc = [arg]
-      , odst = [sp] --porque lo mueve
-      , ojump = Nothing
-      }
-  munchArgs (init args)
+-- PAGINA 204
+-- To pass parameters to the subroutine, we put up to six of them into registers
+-- (in order: rdi, rsi, rdx, rcx, r8, r9).
+-- If there are more than six parameters to the subroutine,
+-- then push the rest onto the stack in reverse order (i.e. last parameter first)
+-- – since the stack grows down, the first of the extra parameters
+-- (really the seventh parameter) parameter will be stored at the lowest address
+-- (this inversion of parameters was historically used to allow functions
+-- to be passed a variable number of parameters).
+munchArgs :: InstrEmitter e => [Exp] -> e [Temp]
+munchArgs args = munchArgs' 0 args 
 
+munchArgs' :: InstrEmitter e => Int -> [Exp] -> e [Temp]
+munchArgs' _ [] = return []
+munchArgs' cont args = 
+  if cont < 6
+  then do
+  -- Puedo mandar argumento por registro
+    arg <- munchExp (head args)
+    let reg = argregs !! cont
+    emit $
+      Oper
+        { oassem = "movq s0, d0\n"
+        , osrc = [arg]
+        , odst = [reg]
+        , ojump = Nothing
+        }
+    otherRegs <- munchArgs' (cont + 1) (tail args)
+    return (reg : otherRegs)
+  else do
+  -- Los tengo que mandar a Stack, en el orden inverso
+    arg <- munchExp (last args)
+    emit $
+      Oper
+        { oassem = "pushq s0\n"
+        , osrc = [arg]
+        , odst = [sp]
+        , ojump = Nothing
+        }
+    munchArgs' (cont + 1) (init args)
+  
 -- Before calling a subroutine, the caller should save the contents of certain registers that are designated caller-saved.
--- The caller-saved registers are EAX, ECX, EDX. Since the called subroutine is allowed to modify these registers,
--- if the caller relies on their values after the subroutine returns, the caller must push the values in these registers
--- onto the stack (so they can be restore after the subroutine returns.
-pushList :: InstrEmitter e => [Temp] -> e ()
-pushList [] = return ()
-pushList (x:xs) = do
-  pushOne x
-  pushList xs
+emitPushList :: InstrEmitter e => [Temp] -> e ()
+emitPushList [] = return ()
+emitPushList (reg:regs) = do
+  emit $ Oper {oassem = "pushq s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
+  emitPushList regs
 
--- Sera util ??
-pushOne :: InstrEmitter e => Temp -> e ()
-pushOne temp = do
-  emit $
-    Oper {oassem = "push s0\n", osrc = [temp], odst = [sp], ojump = Nothing}
-  return ()
-
-popList :: InstrEmitter e => [Temp] -> e ()
-popList [] = return ()
-popList (x:xs) = do
-  emit $ Oper {oassem = "pop d0\n", osrc = [], odst = [x, sp], ojump = Nothing}
-  popList xs
+emitPopList :: InstrEmitter e => [Temp] -> e ()
+emitPopList [] = return ()
+emitPopList (reg:regs) = do
+  emit $ Oper {oassem = "popq d0\n", osrc = [], odst = [reg, sp], ojump = Nothing}
+  emitPopList regs
 
 -- data Relop = EQ | NE | LT | GT | LE | GE | ULT | ULE | UGT | UGE
 -- Syntax

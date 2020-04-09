@@ -24,7 +24,7 @@ import           TigerSeman
 import           TigerTemp
 import           TigerTree             (Stm)
 import           TigerUnique
-
+import           TigerSymbol
 import           Text.Parsec           (runParser)
 
 data Options =
@@ -102,15 +102,25 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
+allocStep :: Options -> [[Instr]] -> StGen [[Instr]]
+allocStep _ instrs = undefined
+
 -- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do
   frags <- translateStep opt exp
-  let (ass, stmtsWithFrames) = sepFrag frags
+  let (labels, stmtsWithFrames) = sepFrag frags
   let (stmts, frames) = unzip stmtsWithFrames
   canonStmts <- canonStep opt stmts
-  munchStmts <- munchStep opt canonStmts
-  return $ zip munchStmts frames
-  -- return  frags
+  munchInstr <- munchStep opt canonStmts
+  let instrWithSink = zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
+      instrWithEpiAndPrologue = map procEntryExit3 instrWithSink
+      labelsAssembly = labels2Strings labels
+  allocInstr <- allocStep opt instrWithEpiAndPrologue
+  -- Después de allocStep voy a tener los src y dst con la posta... supuestamente.
+  -- Sobreescribimos los s0 d0, con lo de las listas
+  let programa = map instrs2Strings allocInstr
+
+  return $ instrWithEpiAndPrologue
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
@@ -127,3 +137,20 @@ main = do
   when (optFrags opts') $ putStrLn $ show something
   -- when (optFrags opts') $ showFrags something
   return ()
+
+labels2Strings :: [Frag] -> String
+labels2Strings [] = ""
+labels2Strings ((AString label strings):frags) =
+  let first = unpack label ++ ":" ++ foldl (\declaracion linea -> declaracion ++ "\n" ++ unpack linea) "" strings ++ "\n"
+  in first ++ labels2Strings frags
+labels2Strings ((Proc _ _):_) = error "Que hace esto acá?"
+
+
+instrs2Strings :: [Instr] -> String
+instrs2Strings instrs =
+  foldl (\programa instr -> programa ++ instr2String instr ++ "\n") "" instrs
+
+instr2String :: Instr -> String
+instr2String (Oper str src dst _jump) = undefined
+instr2String (Move str src dst) = undefined
+instr2String (Label label _) = label

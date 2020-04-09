@@ -9,66 +9,74 @@ import           TigerSymbol
 
 import           Prelude                 hiding ( exp )
 
---
+import           Assem                   
 
---                        +--------------+
---                          |              |
---                     +    |              |
---                     |    +--------------+
---                     |    |              |
---                     |    |   arg(N-1)   |  starts from 7'th argument for x86_64
---                     |    |              |
---                     |    +--------------+
---                     |    |              |
---                     |    |     argN     |
---                     |    |              |
---                     |    +--------------+
---                     |    |              |
---                     |    |Return address|  %rbp + 8
--- Stack grows down    |    |              |
---                     |    +--------------+
---                     |    |              |
---                     |    |     %rbp     |  Frame base pointer
---                     |    |              |
---                     |    +--------------+
---                     |    |              |
---                     |    |  local var1  |  %rbp - 8
---                     |    |              |
---                     |    +--------------+
---                     |    |              |
---                     |    | local ^ar 2  | <-- %rsp
---                     |    |              |
---                     v    +--------------+
---                          |              |
---                          |              |
---                          +--------------+
+-- There are sixteen 64-bit registers in x86-64: ​
+-- %rax​, ​%rbx​, ​%rcx​, ​%rdx​, ​%rdi​, ​%rsi​, ​%rbp​, %rsp​, and ​%r8-r15​.
+-- Of these, ​%rax​, ​%rcx​, ​%rdx​, ​%rdi​, ​%rsi​, ​%rsp​, and ​%r8-r11​ are considered caller-save
+-- registers, meaning that they are not necessarily saved across function calls.
+-- By convention, ​%rax​ is used to store a function’s return value,
+-- if it exists and is no more than 64 bits long. (Larger return types like structs are returned using the stack.)
+-- Registers ​%rbx​, %rbp​, and ​%r12-r15​ are callee-save registers,
+-- meaning that they are saved across function calls. Register ​​%rsp​ is used as the​ stack pointer,​ a pointer
+-- to the top most element in the stack.
+-- Additionally, ​%rdi​,​ %rsi​, ​%rdx​, ​%rcx​, ​%r8​, and ​%r9​ are used to pass the first six integer or
+-- pointer parameters to called functions. Additional parameters (or large parameters such as structs passed by value)
+-- are passed on the stack.
 
--- | Registros muy usados.
-rv, fp, sp, bp :: Temp
+-- | Caller-save registers
 
--- | Return value
--- | Es 'eax', ver calling convention. Lo dejo por si lo usamos sin querer.
-rv = pack "eax"
---------------
+rax = pack "%rax"
+rcx = pack "%rcx"
+rdx = pack "%rdx"
+rdi = pack "%rdi"
+rsi = pack "%rsi"
+rsp = pack "%rsp"
+r8  = pack "%r8"
+r9  = pack "%r9"
+r10  = pack "%r10"
+r11  = pack "%r11"
 
--- | Stack pointer
-sp = pack "esp"
--- | Base (frame) pointer
-bp = pack "ebp"
-fp = pack "ebp"
 
--- | Registros de x86
-eax, ebx, ecx, edx, esi, edi :: Temp
-eax = pack "eax"
-ebx = pack "ebx"
-ecx = pack "ecx"
-edx = pack "edx"
-esi = pack "esi"
-edi = pack "edi"
+-- | Callee-save registers
+rbx = pack "%rbx"
+rbp = pack "%rbp"
+r12 = pack "%r12"
+r13 = pack "%r13"
+r14 = pack "%r14"
+r15 = pack "%r15"
+
+rv = rax
+sp = rsp
+fp = rbp
+-- -- | Registros muy usados.
+-- rv, fp, sp, bp :: Temp
+
+-- -- | Return value
+-- -- | Es 'eax', ver calling convention. Lo dejo por si lo usamos sin querer.
+-- rv = pack "eax"
+-- --------------
+
+-- -- | Stack pointer
+-- sp = pack "esp"
+-- -- | Base (frame) pointer
+-- bp = pack "ebp"
+-- fp = pack "ebp"
+
+-- -- | Registros de x86
+-- eax, ebx, ecx, edx, esi, edi :: Temp
+-- eax = pack "eax"
+-- ebx = pack "ebx"
+-- ecx = pack "ecx"
+-- edx = pack "edx"
+-- esi = pack "esi"
+-- edi = pack "edi"
 
 -- | Word size in bytes
+-- “quadword” refers to an eight-byte value (suffix​ ​q​).
 wSz :: Int
-wSz = 4
+wSz = 8
+
 -- | Base two logarithm of word size in bytes
 log2WSz :: Int
 log2WSz = 2
@@ -95,19 +103,22 @@ argsInicial = 0
 regInicial = 1
 localsInicial = 0
 
--- | Listas de regustros que define la llamada y registros especiales
-calldefs, specialregs :: [Temp]
+-- | Listas de registros que define la llamada y registros especiales
+specialregs :: [Temp]
 -- Los registros que una llamada pisa, deberian ser destino de un call
-calldefs = [eax]
-specialregs = [eax, fp, sp, bp]
+-- calldefs = [rv]
+specialregs = [rv, sp, fp]
 
 argregs, calleesaves, callersaves :: [Temp]
-argregs = []
+-- ​%rdi​,​ %rsi​, ​%rdx​, ​%rcx​, ​%r8​, and ​%r9​ are used to pass the first six integer or pointer parameters to called functions.
+-- (in order: rdi, rsi, rdx, rcx, r8, r9).
+argregs = [rdi, rsi, rdx, rcx, r8, r9]
 -- Preservados por la subrutina que se llama
-calleesaves = [ebx, edi, esi]
+calleesaves = [rbx, rbp, r12, r13, r14, r15]
 -- Preservados por el que llama a la subrutina
-callersaves = [eax, ecx, edx]
+callersaves = [r10, r11]
 
+allRegs = argregs ++ calleesaves ++ callersaves ++ specialregs
 -- | Tipo de dato que define el acceso a variables.
 data Access =
   -- | En memoria, acompañada de una dirección
@@ -153,6 +164,7 @@ data Frame = Frame {
         locals      :: [Escapa],
         -- | Contadores de cantidad de argumentos, variables y registros.
         actualArg   :: Int,
+        actualStackArg :: Int,
         actualLocal :: Int,
         actualReg   :: Int
     }
@@ -166,6 +178,7 @@ defaultFrame = Frame
   , formals     = []
   , locals      = []
   , actualArg   = argsInicial
+  , actualStackArg = argsInicial
   , actualLocal = localsInicial
   , actualReg   = regInicial
   }
@@ -193,23 +206,33 @@ externalCall s = Call (Name $ pack s)
 -- Dependiendo de la arquitectura algunos pueden ir por memoria o por stack. Salvo obviamente
 -- que escapen, en ese caso tienen que ir a memoria.
 allocArg :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
-allocArg fr _ =
+allocArg fr Escapa = do
   let actual = actualArg fr
       acc    = InFrame $ actual * wSz + argsGap
-  in  return (fr { actualArg = actual + 1 }, acc)
--- No necesitamos este caso debido a la arquitectura
--- allocArg fr NoEscapa = do
---   s <- newTemp
---   return (fr, InReg s)
+  return (fr { formals = (formals fr) ++ [Escapa], actualStackArg = (actualStackArg fr) + 1,
+                actualArg = actual + 1 }, acc)
+allocArg fr NoEscapa =
+  if actualArg fr < 6
+  then 
+  -- Aún tengo registros disponibles para argumentos
+    let actual = actualArg fr
+        argReg = argregs !! actual -- TODO: argregs deberia estar en orden. como el index arranca de 0, esto elige el proximo bien.
+    in return (fr { formals = (formals fr) ++ [NoEscapa], actualArg = actual + 1}, InReg argReg)
+  else
+  -- Ya no tengo registros lo mando a stack
+    let actual = actualArg fr
+        acc    = InFrame $ actual + wSz + argsGap
+    in return (fr { formals = (formals fr) ++ [Escapa], actualArg = actual + 1,
+                    actualStackArg = (actualStackArg fr) + 1}, acc)
 
 allocLocal :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
 allocLocal fr Escapa =
   let actual = actualLocal fr
-      acc    = InFrame $ actual * wSz + localsGap
-  in  return (fr { actualLocal = actual + 1 }, acc)
+      acc    = InFrame $ -(actual * wSz + localsGap) --TODO: revisar func exp. El stack crece abajo??
+  in  return (fr { locals = (locals fr) ++ [Escapa], actualLocal = actual + 1 }, acc)
 allocLocal fr NoEscapa = do
   s <- newTemp
-  return (fr, InReg s)
+  return (fr {locals = (locals fr) ++ [NoEscapa]}, InReg s)
 
 -- Función auxiliar par el calculo de acceso a una variable, siguiendo el Static Link.
 -- Revisar bien antes de usarla, pero ajustando correctamente la variable |fpPrevLev|
@@ -230,3 +253,41 @@ exp (InFrame k) e = Mem (Binop Plus (auxexp e) (Const k))
   -- nivel tendría que ser el mismo, sino hay un error en el calculo de escapes.
 exp (InReg l) c | c /= 0    = error "Megaerror en el calculo de escapes?"
                 | otherwise = Temp l
+
+procEntryExit2 :: Frame -> [Instr] -> [Instr]
+procEntryExit2 _fr instr =
+  instr ++ [Oper {oassem = "", osrc = specialregs ++ calleesaves, odst = [], ojump = Nothing}]
+
+-- Esta cosa es el Pre y Post de una llamada a funcion (callee)
+procEntryExit3 :: ([Instr], Frame) -> [Instr]
+procEntryExit3 (body, frame) =
+    let frameOffset = wSz * ((actualLocal frame) + (actualStackArg frame))
+    in
+    [   Oper {oassem = ".global " ++ (unpack $ name frame) ++ "\n", osrc = [], odst = [], ojump=Nothing},
+        Oper {oassem = ".type " ++ (unpack $ name frame) ++ ", @function" ++ "\n", osrc = [], odst = [], ojump=Nothing},
+        Assem.Label {lassem = (unpack $ name frame)++ ":\n", llab=name frame },
+        Oper {oassem = "pushq s0\n", osrc=[fp], odst=[sp],ojump=Nothing }, -- pusheo el frame-pointer
+        Assem.Move {massem = "movq s0, d0\n", mdst=fp, msrc=sp} -- el frame-pointer apunta a donde está el stack ahora
+    ]
+    ++ pushList calleesaves ++
+    [
+        Oper {oassem = "subq $" ++ show frameOffset ++ ", d0\n", osrc = [], odst = [sp], ojump = Nothing}
+    ]
+    ++ body ++
+    [
+        Oper {oassem = "addq $" ++ show frameOffset ++ ", d0\n", osrc = [], odst = [sp], ojump = Nothing}
+    ]
+    ++ popList ((reverse calleesaves) ++ [fp]) ++
+    [
+        Oper {oassem = "ret\n", osrc = [rax], odst = [], ojump = Nothing}
+    ]
+
+pushList :: [Temp] -> [Instr]
+pushList [] = []
+pushList (reg:regs) = (Oper {oassem = "pushq s0\n", osrc=[reg], odst=[sp], ojump=Nothing}): pushList regs
+
+popList :: [Temp] -> [Instr]
+popList [] = []
+popList (reg:regs) = (Oper {oassem = "popq s0\n", osrc=[reg], odst=[sp], ojump=Nothing}): popList regs
+
+-- https://stackoverflow.com/questions/24549912/where-and-why-is-the-x64-frame-pointer-supposed-to-point-windows-x64-abi
