@@ -76,7 +76,6 @@ data Worklists = Worklists {
 
 }
 
-type Allocator = StateT Worklists StGen
 
 colors :: [Temp]
 colors = callersaves ++ calleesaves ++ argregs
@@ -550,28 +549,10 @@ initState initialRegs = Worklists {
     color = M.fromList (zip precolors precolors)
 }
 
+type Allocator = StateT Worklists StGen
 
--- runAllocator :: Allocator -> Frame -> [Instr] -> Worklists
--- runAllocator frame instr = undefined
+runAllocator :: Allocator Worklists -> StGen Worklists
+runAllocator = flip execStateT $ initState S.empty
 
-
--- runMonada :: Monada a -> StGen (Either Symbol a)
--- runMonada =  flip evalStateT initConf . runExceptT
-
--- execMonada :: Monada (BExp, Tipo) -> StGen Estado
--- execMonada =  flip execStateT initConf . runExceptT
-
--- transcribeProgram :: Exp -> Monada [Frag]
--- transcribeProgram prog = do
---   (progBody, _) <- transExp prog
---   functionDec progBody outermost IsProc
---   getFrags
-
--- runFrags :: Exp -> StGen (Either Symbol [Frag])
--- runFrags = runMonada . transcribeProgram
-
--- runSeman :: Exp -> StGen (Either Symbol (BExp, Tipo))
--- runSeman = runMonada . transExp
-
--- execSeman :: Exp -> StGen Estado
--- execSeman = execMonada . transExp
+-- runAllocate instrs frame = do
+--   runAllocator . allocate instrs frame
