@@ -541,8 +541,8 @@ doAllocate instrs frame = do
 
 type Allocator a = StateT Worklists StGen a
 
-runAllocator :: [Instr] -> Frame -> StGen Worklists
-runAllocator instrs frame = flip execStateT (initState S.empty) (doAllocate instrs frame)
+runAllocator :: [Instr] -> Frame -> StGen [Instr]
+runAllocator instrs frame = flip evalStateT (initState S.empty) (doAllocate instrs frame)
 
 initState :: S.Set Temp -> Worklists
 initState initialRegs = Worklists {
