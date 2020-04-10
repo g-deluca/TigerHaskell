@@ -106,7 +106,7 @@ localsInicial = 0
 -- | Listas de registros que define la llamada y registros especiales
 specialregs :: [Temp]
 -- Los registros que una llamada pisa, deberian ser destino de un call
--- calldefs = [rv]
+calldefs = [rv]
 specialregs = [rv, sp, fp]
 
 argregs, calleesaves, callersaves :: [Temp]

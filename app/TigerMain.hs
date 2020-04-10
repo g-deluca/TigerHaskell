@@ -17,6 +17,7 @@ import           TigerCanon
 import           TigerEscap
 import           TigerFrame
 import           TigerMunch
+import           TigerAllocation
 import           TigerParser
 import           TigerPretty
 import           TigerPrettyIr
@@ -102,8 +103,8 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
-allocStep :: Options -> [[Instr]] -> StGen [[Instr]]
-allocStep _ instrs = undefined
+allocStep :: Options -> [[Instr]] -> Frame -> StGen [[Instr]]
+allocStep _ instrs fr = mapM (\i -> runAllocate i fr) instrs
 
 -- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do

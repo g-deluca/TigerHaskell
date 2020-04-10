@@ -2,6 +2,7 @@ module TigerSymbol
   ( Symbol
   , pack
   , unpack
+  , replace
   , addStr
   , append
   , appends

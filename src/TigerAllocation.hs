@@ -7,6 +7,7 @@ import TigerMakeGraph
 import TigerLiveness
 import TigerFrame
 import TigerUnique
+import TigerSymbol
 
 import Data.Map as M
 import Data.Set as S
@@ -507,6 +508,45 @@ allocate instr frame = do
                 (freezeWorklist wlists) == [] && (spillWorklist wlists) == [])
 
 
+replaceTemps :: [Instr] -> Allocator [Instr]
+replaceTemps instrs = do
+  wlists <- get
+  let mapColors = color wlists
+      newInstr = L.map (\instr -> replaceTemps' instr mapColors) instrs
+  return newInstr
+
+replaceTemps' :: Instr -> M.Map Temp Temp -> Instr
+replaceTemps' (Move str src dst) color = 
+  let newStr = applyTemps "s" 0 str [src] color
+      newStr' = applyTemps "d" 0 newStr [dst] color
+  in (Move newStr' src dst)
+replaceTemps' (Oper str src dst jump) color =
+  let newStr = applyTemps "s" 0 str src color
+      newStr' = applyTemps "d" 0 newStr' dst color
+  in (Oper newStr' src dst jump)
+replaceTemps' label@(Label _ _) _ = label
+
+applyTemps :: String -> Integer -> String -> [Temp] -> M.Map Temp Temp -> String
+applyTemps prefijo indice instruccion [] colores = instruccion
+applyTemps prefijo indice instruccion (temp:temps) colores =
+  let toReplace = pack (prefijo ++ show indice)
+      replaceWith = colores ! temp
+      recursive = applyTemps prefijo (indice + 1) instruccion temps colores
+  in unpack $ replace toReplace replaceWith (pack recursive)
+
+doAllocate :: [Instr] -> Frame -> Allocator [Instr] 
+doAllocate instrs frame = do
+  allocate instrs frame
+  replaceTemps instrs
+
+type Allocator a = StateT Worklists StGen a
+
+runAllocator :: Allocator [Instr] -> StGen Worklists
+runAllocator = flip execStateT $ initState S.empty
+
+runAllocate i fr = runAllocator (doAllocate i fr)
+
+
 initState :: S.Set Temp -> Worklists
 initState initialRegs = Worklists {
     okColors = S.empty,
@@ -548,11 +588,3 @@ initState initialRegs = Worklists {
     alias = M.empty,
     color = M.fromList (zip precolors precolors)
 }
-
-type Allocator = StateT Worklists StGen
-
-runAllocator :: Allocator Worklists -> StGen Worklists
-runAllocator = flip execStateT $ initState S.empty
-
--- runAllocate instrs frame = do
---   runAllocator . allocate instrs frame
