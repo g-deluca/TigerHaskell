@@ -47,7 +47,7 @@ data Worklists = Worklists {
 
     -- Move sets. 5 sets of move instructions, and every Move is in exactly one of these
     -- (after Build through the end of Main)
-    
+
     -- moves that have been coalesced
     coalescedMoves :: [Node Instr],
     -- moves whose source and target interfere
@@ -516,7 +516,7 @@ replaceTemps instrs = do
   return newInstr
 
 replaceTemps' :: Instr -> M.Map Temp Temp -> Instr
-replaceTemps' (Move str src dst) color = 
+replaceTemps' (Move str src dst) color =
   let newStr = applyTemps "s" 0 str [src] color
       newStr' = applyTemps "d" 0 newStr [dst] color
   in (Move newStr' src dst)
@@ -534,18 +534,15 @@ applyTemps prefijo indice instruccion (temp:temps) colores =
       recursive = applyTemps prefijo (indice + 1) instruccion temps colores
   in unpack $ replace toReplace replaceWith (pack recursive)
 
-doAllocate :: [Instr] -> Frame -> Allocator [Instr] 
+doAllocate :: [Instr] -> Frame -> Allocator [Instr]
 doAllocate instrs frame = do
   allocate instrs frame
   replaceTemps instrs
 
 type Allocator a = StateT Worklists StGen a
 
-runAllocator :: Allocator [Instr] -> StGen Worklists
-runAllocator = flip execStateT $ initState S.empty
-
-runAllocate i fr = runAllocator (doAllocate i fr)
-
+runAllocator :: [Instr] -> Frame -> StGen Worklists
+runAllocator instrs frame = flip execStateT (initState S.empty) (doAllocate instrs frame)
 
 initState :: S.Set Temp -> Worklists
 initState initialRegs = Worklists {
