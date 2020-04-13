@@ -2,9 +2,14 @@ module TigerGraph where
 
 import Data.Set as S
 import Prelude hiding (pred, succ)
+import Assem
 
 data Node a = Node Int a
 type Edge a = (Node a, Node a)
+
+-- TODO: ESTO ES MALISIMO ACÁ, PORQUE HARDCODED A INSTR?? ver TigerAllocation.hs:108
+instance Show (Node Instr) where
+  show (Node _i a) = show a
 
 instance Eq (Node a) where
   (Node i _) == (Node j _) = i == j

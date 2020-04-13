@@ -3,13 +3,13 @@ module Assem where
 -- Algunos links con doc. x86-64
 -- https://cs.brown.edu/courses/cs033/docs/guides/x64_cheatsheet.pdf
 -- http://6.s081.scripts.mit.edu/sp18/x86-64-architecture-guide.html
-import TigerTemp (Label, Temp)
+import TigerTemp (Label, Temp, makeStringL)
 
 data Instr =
     Oper {
         oassem :: String,
-        odst :: [Temp],
         osrc :: [Temp],
+        odst :: [Temp],
         ojump :: Maybe [Label]
     }
  |  Label {
@@ -18,14 +18,14 @@ data Instr =
     }
  |  Move {
         massem :: String,
-        mdst :: Temp,
-        msrc :: Temp
+        msrc :: Temp,
+        mdst :: Temp
     }
 
 instance Show Instr where
-    show (Oper oassem _ _ _) = oassem
-    show (Label lassem _) = lassem
-    show (Move massem _ _) = massem
+    show (Oper oassem src dst jump) = oassem ++ " src :" ++ show src ++ "- dst: " ++ show dst ++ " jmp: " ++ show jump
+    show (Label lassem llab) = lassem
+    show (Move massem src dst) = massem ++ " src: " ++ show src ++ " dst: " ++ show dst
 
 getTemps' :: Instr -> [Temp]
 getTemps' (Oper _ dsts srcs _) = dsts ++ srcs

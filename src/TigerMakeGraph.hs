@@ -4,6 +4,7 @@ module TigerMakeGraph where
   import TigerTemp
   import TigerGraph
   import Data.Maybe
+  import Debug.Trace
   -- http://hackage.haskell.org/package/containers-0.6.2.1/docs/Data-Map-Strict.html
   import qualified Data.Map.Strict as Map
 
@@ -42,9 +43,11 @@ module TigerMakeGraph where
   oneLabel2graph instr@(Label _ _ ) (flowGraph, nodes) =
       let newNode = mkNode instr (graph flowGraph) -- solo el nodo
           newGraph = addNode instr (graph flowGraph) -- grafo con nuevo nodo
+          newDef = Map.insert newNode [] (def flowGraph) -- TODO: loop si agrego esto!
+          newUse = Map.insert newNode [] (use flowGraph)
           newIsmove = Map.insert newNode False (ismove flowGraph)
-      in (flowGraph {graph = newGraph, ismove = newIsmove}, newNode:nodes)
-  oneLabel2graph _ _= error "why?"
+      in (flowGraph {graph = newGraph, def = newDef, use = newUse, ismove = newIsmove}, newNode:nodes)
+  oneLabel2graph _ _ = error "why?"
 
   others2graph :: [Instr] -> (FlowGraph Instr, [Node Instr]) -> (FlowGraph Instr, [Node Instr])
   others2graph [] res = res
@@ -84,3 +87,4 @@ module TigerMakeGraph where
   findNodeWithLabel label [] = error "Error en la busqueda del nodo"
   findNodeWithLabel label (node@(Node _ label'@(Label _ _)):xs) =
     if label == llab label' then node else findNodeWithLabel label xs
+  findNodeWithLabel label (node:xs) = findNodeWithLabel label xs

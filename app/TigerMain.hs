@@ -33,12 +33,13 @@ data Options =
     { optArbol    :: Bool
     , optDebEscap :: Bool
     , optFrags    :: Bool
+    , optMunch    :: Bool
     }
   deriving (Show)
 
 defaultOptions :: Options
 defaultOptions =
-  Options {optArbol = False, optDebEscap = False, optFrags = False}
+  Options {optArbol = False, optDebEscap = False, optFrags = False, optMunch = False}
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -57,6 +58,11 @@ options =
       ["fragmentos"]
       (NoArg (\opts -> opts {optFrags = True}))
       "Muestra los fragmentos obtenidos luego de la traducción a código intermedio"
+  , Option
+      ['m']
+      ["munch"]
+      (NoArg (\opts -> opts {optMunch = True}))
+      "Muestra el resultado de Munch"
   ]
 
 compilerOptions :: [String] -> IO (Options, [String])
@@ -103,8 +109,8 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
-allocStep :: Options -> [[Instr]] -> Frame -> StGen [[Instr]]
-allocStep _ instrs fr = mapM (\i -> runAllocate i fr) instrs
+allocStep :: Options -> [([Instr], Frame)] -> StGen [[Instr]]
+allocStep _ instrs = mapM (\(i, f) -> runAllocator i f) instrs
 
 -- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do
@@ -116,15 +122,16 @@ tiger opt exp = do
   let instrWithSink = zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
       instrWithEpiAndPrologue = map procEntryExit3 instrWithSink
       labelsAssembly = labels2Strings labels
-  allocInstr <- allocStep opt instrWithEpiAndPrologue
+  allocInstr <- allocStep opt $ instrWithSink -- zip instrWithEpiAndPrologue frames 
   -- Después de allocStep voy a tener los src y dst con la posta... supuestamente.
   -- Sobreescribimos los s0 d0, con lo de las listas
-  let programa = map instrs2Strings allocInstr
+  -- let programa = map instrs2Strings allocInstr
 
-  return $ instrWithEpiAndPrologue
+  return $ allocInstr
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
+
 
 main :: IO ()
 main = do

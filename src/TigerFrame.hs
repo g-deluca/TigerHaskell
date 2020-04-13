@@ -256,7 +256,7 @@ exp (InReg l) c | c /= 0    = error "Megaerror en el calculo de escapes?"
 
 procEntryExit2 :: Frame -> [Instr] -> [Instr]
 procEntryExit2 _fr instr =
-  instr ++ [Oper {oassem = "", osrc = specialregs ++ calleesaves, odst = [], ojump = Nothing}]
+  instr ++ [Oper {oassem = " ", osrc = specialregs ++ calleesaves, odst = [], ojump = Nothing}]
 
 -- Esta cosa es el Pre y Post de una llamada a funcion (callee)
 procEntryExit3 :: ([Instr], Frame) -> [Instr]

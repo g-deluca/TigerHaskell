@@ -1,47 +1,60 @@
 module TigerLiveness where
 
   import Assem
+  import TigerSymbol
   import TigerGraph as G
   import TigerMakeGraph
   import TigerTemp
-  import Prelude hiding (succ)
+  import Prelude as P hiding (succ)
   import qualified Data.Map.Strict as Map
   import qualified Data.Set as Set
 
   import Control.Monad.State
   import Data.Maybe
+  import Debug.Trace
 
   data LivenessNode a = LivenessNode {
     liveIn :: Set.Set a,
     liveOut :: Set.Set a
-  } deriving (Eq, Ord)
+  } deriving (Eq, Ord, Show)
+
+  lookUp :: (Ord k, Show k, Show v) => Map.Map k v -> k -> String -> v
+  lookUp m k errorMsg =
+    maybe (error $ ">>> lookUp " ++ errorMsg ++ " --> " ++ show k ++ " in: " ++ show m) id
+      $ Map.lookup k m
 
   emptyLivenessNode :: LivenessNode Temp
   emptyLivenessNode = LivenessNode { liveIn = Set.empty, liveOut = Set.empty}
 
   type LivenessMap = Map.Map (Node Instr) (LivenessNode Temp)
-
+  
+  mkEmptyLivenessMap :: FlowGraph Instr -> LivenessMap
+  mkEmptyLivenessMap flowGraph@(FlowGraph graph def use ismove) = 
+    let nGraph = nodes graph -- los nodos del grafo
+        emptySets = map (\x -> emptyLivenessNode) [0..(P.length nGraph)] -- [{}, ... , {}]
+    in Map.fromList $ zip (Set.toList (nodes graph)) emptySets
+  
   mkLivenessMap :: FlowGraph Instr -> State LivenessMap ()
   mkLivenessMap flowGraph@(FlowGraph graph def use ismove) = do
     let
       mkLiveIn :: (Node Instr) -> (LivenessMap) -> (Set.Set Temp)
       mkLiveIn node allNodes =
-        let currentLiveness = fromMaybe emptyLivenessNode (Map.lookup node allNodes)
-        in Set.union (Set.fromList (use Map.! node)) (Set.difference (liveOut currentLiveness) (Set.fromList (def Map.! node)))
+        let currentLiveness = (allNodes Map.! node)
+        in Set.union (Set.fromList $ use Map.! node) (Set.difference (liveOut currentLiveness) (Set.fromList (def Map.! node)))
 
       mkLiveOut :: (Node Instr) -> LivenessMap -> (Set.Set Temp)
       mkLiveOut node allNodes =
         let
-          nodeSucc = Set.map (\succesor -> fromMaybe emptyLivenessNode (Map.lookup succesor allNodes)) (succ node graph)
+          nodeSucc = Set.map (\succesor -> (allNodes Map.! succesor)) (succ node graph)
         in Set.unions $ Set.toList $ Set.map liveIn nodeSucc
 
       mkLivenessNode :: Node Instr -> State LivenessMap Bool
-      mkLivenessNode node = do
+      mkLivenessNode node = do 
         allNodes <- get
         let newLiveIn = mkLiveIn node allNodes
             newLiveOut = mkLiveOut node allNodes
-            oldLiveIn = liveIn $ fromMaybe emptyLivenessNode $ Map.lookup node allNodes
-            oldLiveOut = liveOut $ fromMaybe emptyLivenessNode $ Map.lookup node allNodes
+            oldLiveIn = liveIn $ allNodes  Map.! node
+            oldLiveOut = liveOut $ allNodes Map.! node
         if (newLiveIn == oldLiveIn && newLiveOut == oldLiveOut)
           then return True
           else  let updatedNodes = Map.insert node (LivenessNode {liveIn = newLiveIn, liveOut = newLiveOut}) allNodes
@@ -51,7 +64,7 @@ module TigerLiveness where
     if foldl (&&) True keepUpdating then return () else mkLivenessMap flowGraph
     
   calculateLiveness :: FlowGraph Instr -> LivenessMap
-  calculateLiveness flowGraph = execState (mkLivenessMap flowGraph) Map.empty
+  calculateLiveness flowGraph = execState (mkLivenessMap flowGraph) (mkEmptyLivenessMap flowGraph)
 
 
   data InterferenceGraph a = InterferenceGraph {
@@ -69,8 +82,8 @@ module TigerLiveness where
     let graphNodes = (nodes graph)
         addInterferenceNodes :: (Node Instr) -> InterferenceGraph Temp -> InterferenceGraph Temp
         addInterferenceNodes node@(Node index item) iGraph =
-          let defs = def Map.! node
-              livenessNode = livenessMap Map.! node
+          let defs = lookUp def node "fun: interferenceGraph-1"
+              livenessNode = lookUp livenessMap node "fun: interferenceGraph-2"
               temps = Set.toList $ Set.union (liveIn livenessNode) (liveOut livenessNode)
               iGraph' = maybeNodeIsMove node iGraph -- lo hago acá porque después pierdo `node`
           in loopDefs defs temps iGraph'

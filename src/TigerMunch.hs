@@ -9,6 +9,7 @@ import           TigerUnique
 
 import           Control.Monad.State
 import           Data.Text           (unpack)
+import Debug.Trace
 
 class (Monad w, TLGenerator w) =>
       InstrEmitter w
@@ -27,7 +28,10 @@ munchStm :: InstrEmitter w => Stm -> w ()
 munchStm (Seq s1 s2) = munchStm s1 >> munchStm s2
 munchStm (ExpS e) = void $ munchExp e
 -- TODO: Agregar casos para optimizar (o nah xd)
-munchStm (T.Move e1 e2) = do
+munchStm (T.Move (Temp t) e2) = do
+  t2 <- munchExp e2
+  emit $ A.Move {massem = "movq s0, d0\n", msrc = t2, mdst = t}
+munchStm (T.Move e1 e2) = do -- T.Move e1 e2 => e1 <- e2
   stm1 <- munchExp e1
   stm2 <- munchExp e2
   emit $ A.Move {massem = "movq s0, d0\n", msrc = stm2, mdst = stm1}
@@ -51,7 +55,7 @@ munchStm (CJump relop e1 e2 l1 l2) = do
   let assemRelOp = relop2assem relop
   emit $
     Oper
-      { oassem = assemRelOp ++ makeStringL l1 ++ "\n"
+      { oassem = assemRelOp ++ " " ++ makeStringL l1 ++ "\n"
       , osrc = []
       , odst = []
       , ojump = Just [l1]
@@ -127,7 +131,7 @@ munchExp (T.Mem (T.Const i)) = do
       , odst = [res]
       , ojump = Nothing
       }
-  return res
+  trace ("ESTA CASO ES RARO!") return res
 munchExp (T.Mem e) = do
   te <- munchExp e
   res <- newTemp
