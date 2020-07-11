@@ -106,15 +106,15 @@ build :: FlowGraph Instr -> LivenessMap -> Allocator ()
 build flowGraph livenessMap =
     let fnodes = nodes $ graph flowGraph
         moveNodes = ismove flowGraph
-
+        instrs = L.map (\(Node _ instr) -> instr) $ S.toList fnodes
         buildNode :: Node Instr -> Allocator ()
         buildNode node = do
             let live = liveOut $ (lookUp livenessMap node "buildNode 1")
                 live' = if (lookUp moveNodes node "buildNode 1.5")
                             then S.difference live (S.fromList (lookUp (use flowGraph) node "buildNode 2"))
                             else live
-            when (trace ("when moveNodes " ++ show moveNodes) lookUp moveNodes node "buildNode 3") $ do
-
+            when (lookUp moveNodes node "buildNode 3") $ do
+                -- trace ("when moveNodes " ++ show moveNodes)
                 -- forall n \in def(I) \union use(I)
                 let defAndUse = (lookUp (def flowGraph) node "buildNode 4") ++ (lookUp (use flowGraph) node "buildNode 5")
                 mapM_ (flip buildMoveList node) defAndUse
@@ -122,7 +122,7 @@ build flowGraph livenessMap =
                 wlists <- get
                 put $ wlists { worklistMoves = node:worklistMoves wlists}
             let live'' = S.union live' (S.fromList (lookUp (def flowGraph) node "buildNode 6"))
-            mapM_ (\d -> mapM_ (\l -> insertDegree d l) live'') (S.fromList ((def flowGraph) M.! node))
+            -- mapM_ (\d -> mapM_ (\l -> insertDegree d l) live'') (S.fromList ((def flowGraph) M.! node))
             mapM_ (\d -> mapM_ (\l -> addEdge d l) live'') (S.fromList (lookUp (def flowGraph) node "buildNode 7"))
 
 
@@ -130,15 +130,21 @@ build flowGraph livenessMap =
         buildMoveList t node = do
           wlists <- get
           let newMoveList = M.insertWith (++) t [node] (moveList wlists)
-          trace ("buildMoveList " ++ show t ++ " - " ++ show node) put $ wlists { moveList = newMoveList}
-    in mapM_ buildNode fnodes
+          -- trace ("buildMoveList " ++ show t ++ " - " ++ show node)
+          put $ wlists { moveList = newMoveList}
+    in insertDegrees (getTemps instrs) >> mapM_ buildNode fnodes
 
 -- TODO: Terminar, buscar todos los "nodos" del grafo de interferencia en build() y
 -- meterle grado 0, sino después explota! 
-insertDegree :: Temp -> Temp -> Allocator ()
-insertDegree d l = do
+
+insertDegrees :: [Temp] -> Allocator ()
+insertDegrees temps = 
+  mapM_ insertDegree temps
+
+insertDegree :: Temp -> Allocator ()
+insertDegree t = do
   wlists <- get
-  let newDegree = M.insert l 0 (M.insert d 0 (degree wlists))
+  let newDegree = M.insert t 0 (degree wlists)
   put wlists {degree = newDegree}
 
 addEdge :: Temp -> Temp -> Allocator ()
@@ -165,6 +171,8 @@ addEdge d l = do
 makeWorklist :: Allocator ()
 makeWorklist = do
   wlists <- get
+  trace ("makeWorklist initial: " ++ show (initial wlists)) $ return ()
+  trace ("makeWorklist degree: " ++ show (degree wlists)) $ return ()
   mapM_ makeWorklistStep (initial wlists)
   where
     makeWorklistStep :: Temp -> Allocator ()
@@ -497,6 +505,8 @@ allocate instr frame = do
   let (flowGraph, _nodes) = instrs2graph instr
       livenessMap = calculateLiveness flowGraph
   build flowGraph livenessMap
+  wlists <- get
+  trace ("$$$ After build: " ++ show (moveList wlists)) (return ())
   makeWorklist
   repeatAllocate
   -- assignColors
