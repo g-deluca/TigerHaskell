@@ -9,9 +9,8 @@ data Node a =
 
 type Edge a = (Node a, Node a)
 
--- TODO: ESTO ES MALISIMO ACÁ, PORQUE HARDCODED A INSTR?? ver TigerAllocation.hs:108
-instance Show (Node Instr) where
-  show (Node _i a) = show a
+instance Show a => Show (Node a) where
+  show (Node i a) = "Node " ++ show i ++ ": " ++ show a
 
 instance Eq (Node a) where
   (Node i _) == (Node j _) = i == j
@@ -47,6 +46,16 @@ pred vertex graph =
 
 adj :: Node a -> Graph a -> Set (Node a)
 adj vertex graph = union (pred vertex graph) (succ vertex graph)
+
+-- Agrega nodos al grafo. Devuelve el grafo actualizado y una lista con
+-- los nodos agregados (en orden)
+addNodes :: [a] -> (Graph a, [Node a]) -> (Graph a, [Node a])
+addNodes [] (graph, insertedNodes) = (graph, reverse insertedNodes)
+addNodes (inst:instrs) (graph, insertedNodes) =
+  addNodes instrs (newGraph, newNode : insertedNodes)
+  where
+    newNode = mkNode inst graph
+    newGraph = addNode inst graph
 
 addNode :: a -> Graph a -> Graph a
 addNode item graph =
