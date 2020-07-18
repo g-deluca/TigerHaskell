@@ -502,7 +502,7 @@ rewriteProgram instr frame = do
 
 allocate :: [Instr] -> Frame -> Allocator ()
 allocate instr frame = do
-  let (flowGraph, _nodes) = instrs2graph instr
+  let flowGraph = instrs2graph instr
       livenessMap = calculateLiveness flowGraph
   build flowGraph livenessMap
   wlists <- get
