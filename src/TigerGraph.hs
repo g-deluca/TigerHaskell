@@ -10,7 +10,7 @@ data Node a =
 type Edge a = (Node a, Node a)
 
 instance Show a => Show (Node a) where
-  show (Node i a) = "Node " ++ show i ++ ": " ++ show a
+  show (Node i a) = "Node " ++ show i 
 
 instance Eq (Node a) where
   (Node i _) == (Node j _) = i == j
@@ -22,7 +22,7 @@ data Graph a =
   Graph
     { nodes :: (Set (Node a))
     , edges :: (Set (Edge a))
-    }
+    } deriving Show
 
 succ :: Node a -> Graph a -> Set (Node a)
 succ vertex graph =

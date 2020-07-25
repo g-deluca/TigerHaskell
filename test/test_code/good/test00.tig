@@ -1,0 +1,6 @@
+let
+  var a : int := 1
+  var b := a
+in
+  0
+end

@@ -134,9 +134,6 @@ build flowGraph livenessMap =
           put $ wlists { moveList = newMoveList}
     in insertDegrees (getTemps instrs) >> mapM_ buildNode fnodes
 
--- TODO: Terminar, buscar todos los "nodos" del grafo de interferencia en build() y
--- meterle grado 0, sino después explota! 
-
 insertDegrees :: [Temp] -> Allocator ()
 insertDegrees temps = 
   mapM_ insertDegree temps
@@ -149,6 +146,7 @@ insertDegree t = do
 
 addEdge :: Temp -> Temp -> Allocator ()
 addEdge d l = do
+    trace (">>> addEdge " ++ show d ++ " -- " ++ show l) (return ())
     wlists <- get
     when (S.notMember (d, l) (adjSet wlists) && d /= l) $ do
       let newAdjSet = S.insert (d, l) $ S.insert (l, d) (adjSet wlists)
@@ -207,7 +205,9 @@ nodeMoves t = do
 adjacent :: Temp -> Allocator [Temp]
 adjacent t = do
   wlists <- get
-  return $ S.toList $ (adjList wlists ! t) `S.difference` (S.fromList (selectStack wlists) `S.union` S.fromList (coalescedNodes wlists))
+  trace ("adjacent 1: " ++ (show $ adjList wlists)) (return ())
+  trace ("adjacent 2: " ++ (show $ selectStack wlists)) (return ())
+  trace ("adjacent 1: " ++ (show $ adjList wlists)) $ return $ S.toList $ (adjList wlists ! t) `S.difference` (S.fromList (selectStack wlists) `S.union` S.fromList (coalescedNodes wlists))
 
 simplify :: Allocator ()
 simplify = do
@@ -257,14 +257,17 @@ coalesce :: Allocator ()
 coalesce = do
   wlists <- get
   let m@(Node _ (move)) = head $ worklistMoves wlists
+  trace ("coalesce 0: " ++ show m) (return ())
   x <- getAlias $ msrc move
   y <- getAlias $ mdst move
+  trace ("coalesce 1: " ++ show x ++ " - " ++ show y) (return ())
   let (u, v) = if L.elem y (precolored wlists) then (y,x) else (x,y)
   let newWorklistMoves = L.filter (/=m) (worklistMoves wlists)
   adjU <- adjacent u
   adjV <- adjacent v
   isConservative <- conservative (adjU ++ adjV)
   isOk <- checkOk v u
+  trace ("coalesce 2: " ++ show isOk) (return ())
   if u == v then do
     addCoalescedMoves m
     addWorkList u
@@ -328,9 +331,11 @@ conservative nodes = do
 getAlias :: Temp -> Allocator Temp
 getAlias n = do
   wlists <- get
-  let nAlias = (alias wlists) ! n
-  nAlias' <- getAlias nAlias
-  return $ if L.elem n (coalescedNodes wlists) then  nAlias' else n
+  if L.elem n (coalescedNodes wlists) then do
+    let nAlias = (alias wlists) ! n
+    getAlias nAlias
+  else
+    return n
 
 combine :: Temp -> Temp -> Allocator ()
 combine u v = do
@@ -506,7 +511,7 @@ allocate instr frame = do
       livenessMap = calculateLiveness flowGraph
   build flowGraph livenessMap
   wlists <- get
-  trace ("$$$ After build: " ++ show (moveList wlists)) (return ())
+  -- trace ("$$$ After build: " ++ show (moveList wlists)) (return ())
   makeWorklist
   repeatAllocate
   -- assignColors
