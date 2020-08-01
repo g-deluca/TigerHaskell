@@ -1,8 +1,9 @@
 module TigerGraph where
 
 import           Assem
-import           Data.Set as S
-import           Prelude  hiding (pred, succ)
+import qualified Data.List as L
+import           Data.Set  as S
+import           Prelude   hiding (pred, succ)
 
 data Node a =
   Node Int a
@@ -10,7 +11,7 @@ data Node a =
 type Edge a = (Node a, Node a)
 
 instance Show a => Show (Node a) where
-  show (Node i a) = "Node " ++ show i 
+  show (Node i a) = "Node " ++ show i
 
 instance Eq (Node a) where
   (Node i _) == (Node j _) = i == j
@@ -22,7 +23,8 @@ data Graph a =
   Graph
     { nodes :: (Set (Node a))
     , edges :: (Set (Edge a))
-    } deriving Show
+    }
+  deriving (Show)
 
 succ :: Node a -> Graph a -> Set (Node a)
 succ vertex graph =
@@ -57,6 +59,11 @@ addNodes (inst:instrs) (graph, insertedNodes) =
     newNode = mkNode inst graph
     newGraph = addNode inst graph
 
+addEdges :: [(Node a, Node a)] -> Graph a -> Graph a
+addEdges [] graph = graph
+addEdges ((a, b):newEdges) graph =
+  mkEdge a b (addEdges newEdges graph)
+
 addNode :: a -> Graph a -> Graph a
 addNode item graph =
   graph {nodes = insert (Node (index + 1) item) (nodes graph)}
@@ -76,3 +83,16 @@ rmEdge src dst graph = graph {edges = delete (src, dst) (edges graph)}
 
 emptyGraph :: Graph a
 emptyGraph = Graph empty empty
+
+findNodeByContent :: Eq a => a -> Graph a -> Node a
+findNodeByContent searchedElem graph =
+  let allNodes = elems $ nodes graph
+
+      searchContent :: Eq a => a -> [Node a] -> Node a
+      searchContent _ [] = error "[findNodeByContent] "
+      searchContent search (foundNode@(Node _ content):rest) =
+        if search == content
+          then foundNode
+          else searchContent search rest
+
+   in searchContent searchedElem allNodes
