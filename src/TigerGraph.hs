@@ -11,7 +11,7 @@ data Node a =
 type Edge a = (Node a, Node a)
 
 instance Show a => Show (Node a) where
-  show (Node i a) = "Node " ++ show i
+  show (Node i a) = show a
 
 instance Eq (Node a) where
   (Node i _) == (Node j _) = i == j

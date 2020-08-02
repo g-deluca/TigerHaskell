@@ -115,3 +115,8 @@ buildIGraphEdges (thisNode:otherNodes) fcg livenessMap =
           then [(x, y) | x <- defs, y <- filter (/= (head $ uses)) out]
           else [(x, y) | x <- defs, y <- out]
    in aristas ++ buildIGraphEdges otherNodes fcg livenessMap
+
+calculateInterferenceGraph :: FlowGraph Instr -> InterferenceGraph
+calculateInterferenceGraph fcg =
+  let livenessMap = calculateLiveness fcg
+   in buildIGraph fcg livenessMap

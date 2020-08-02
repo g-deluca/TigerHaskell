@@ -12,21 +12,23 @@ import           System.Exit
 
 import           Assem
 
+import           Text.Parsec           (runParser)
 import           TigerAbs
+import           TigerAllocation
 import           TigerCanon
 import           TigerEscap
 import           TigerFrame
+import           TigerLiveness
+import           TigerMakeGraph
 import           TigerMunch
-import           TigerAllocation
 import           TigerParser
 import           TigerPretty
 import           TigerPrettyIr
 import           TigerSeman
+import           TigerSymbol
 import           TigerTemp
 import           TigerTree             (Stm)
 import           TigerUnique
-import           TigerSymbol
-import           Text.Parsec           (runParser)
 
 data Options =
   Options
@@ -39,7 +41,8 @@ data Options =
 
 defaultOptions :: Options
 defaultOptions =
-  Options {optArbol = False, optDebEscap = False, optFrags = False, optMunch = False}
+  Options
+    {optArbol = False, optDebEscap = False, optFrags = False, optMunch = False}
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -120,18 +123,20 @@ tiger opt exp = do
   canonStmts <- canonStep opt stmts
   munchInstr <- munchStep opt canonStmts
   let instrWithSink = zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
-      instrWithEpiAndPrologue = map procEntryExit3 instrWithSink
-      labelsAssembly = labels2Strings labels
-  allocInstr <- allocStep opt $ instrWithSink -- zip instrWithEpiAndPrologue frames 
+  let igraphs =
+        map
+          (\(instrs, _) -> calculateInterferenceGraph (instrs2graph instrs))
+          instrWithSink
+  --     instrWithEpiAndPrologue = map procEntryExit3 instrWithSink
+  --     labelsAssembly = labels2Strings labels
+  -- allocInstr <- allocStep opt $ instrWithSink -- zip instrWithEpiAndPrologue frames
   -- Después de allocStep voy a tener los src y dst con la posta... supuestamente.
   -- Sobreescribimos los s0 d0, con lo de las listas
   -- let programa = map instrs2Strings allocInstr
-
-  return $ allocInstr
+  return $ igraphs
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
-
 
 main :: IO ()
 main = do
@@ -141,18 +146,23 @@ main = do
   rawAst <- parserStep opts' s sourceCode
   ast <- calculoEscapadas rawAst opts'
   when (optArbol opts') (showExp ast)
-  something <- runTiger opts' ast
-  when (optFrags opts') $ putStrLn $ show something
-  -- when (optFrags opts') $ showFrags something
+  asd <- runTiger opts' ast
+  putStrLn $ show asd
   return ()
 
 labels2Strings :: [Frag] -> String
 labels2Strings [] = ""
 labels2Strings ((AString label strings):frags) =
-  let first = unpack label ++ ":" ++ foldl (\declaracion linea -> declaracion ++ "\n" ++ unpack linea) "" strings ++ "\n"
-  in first ++ labels2Strings frags
+  let first =
+        unpack label ++
+        ":" ++
+        foldl
+          (\declaracion linea -> declaracion ++ "\n" ++ unpack linea)
+          ""
+          strings ++
+        "\n"
+   in first ++ labels2Strings frags
 labels2Strings ((Proc _ _):_) = error "Que hace esto acá?"
-
 
 instrs2Strings :: [Instr] -> String
 instrs2Strings instrs =
@@ -160,5 +170,5 @@ instrs2Strings instrs =
 
 instr2String :: Instr -> String
 instr2String (Oper str src dst _jump) = undefined
-instr2String (Move str src dst) = undefined
-instr2String (Label label _) = label
+instr2String (Move str src dst)       = undefined
+instr2String (Label label _)          = label
