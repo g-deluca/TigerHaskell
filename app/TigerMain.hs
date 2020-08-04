@@ -14,7 +14,6 @@ import           Assem
 
 import           Text.Parsec           (runParser)
 import           TigerAbs
-import           TigerAllocation
 import           TigerCanon
 import           TigerEscap
 import           TigerFrame
@@ -112,8 +111,8 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
-allocStep :: Options -> [([Instr], Frame)] -> StGen [[Instr]]
-allocStep _ instrs = mapM (\(i, f) -> runAllocator i f) instrs
+-- allocStep :: Options -> [([Instr], Frame)] -> StGen [[Instr]]
+-- allocStep _ instrs = mapM (\(i, f) -> runAllocator i f) instrs
 
 -- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do
