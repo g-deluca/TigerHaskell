@@ -79,6 +79,9 @@ calculateLiveness :: FlowGraph Instr -> LivenessMap
 calculateLiveness flowGraph =
   execState (mkLivenessMap flowGraph) (mkEmptyLivenessMap flowGraph)
 
+-- TODO: De acá para abajo debería ser un módulo nuevo
+--
+--
 -- Simplifico el grafo de esta forma para que sea más fácil usarlo en la etapa siguiente
 -- Podría modificarse directamente el grafo, porque la interfaz que estamos usando solamente
 -- mete ruido y no nos dio ventajas; pero parto desde acá para no tener que refactorizar tanto
@@ -88,6 +91,37 @@ data InterferenceGraph =
     { nodes :: Set.Set Temp
     , edges :: Set.Set (Temp, Temp)
     }
+
+-- Esto es medio garrón porque queda repetida la interfaz pero ya fue
+pred, succ, adj :: Temp -> InterferenceGraph -> Set.Set Temp
+pred t igraph =
+  Set.foldr
+    (\(src, dst) accum ->
+       if dst == t
+         then Set.insert src accum
+         else accum)
+    Set.empty
+    (edges igraph)
+
+-- No bueno, Maxi se mata si ve este código
+succ t igraph =
+  Set.foldr
+    (\(src, dst) accum ->
+       if src == t
+         then Set.insert dst accum
+         else accum)
+    Set.empty
+    (edges igraph)
+
+adj t igraph = Set.union (TigerLiveness.pred t igraph) (succ t igraph)
+
+removeNode :: Temp -> InterferenceGraph -> InterferenceGraph
+removeNode t igraph =
+  let oldNodes = nodes igraph
+      newNodes = oldNodes `Set.difference` (Set.singleton t)
+      oldEdges = edges igraph
+      newEdges = Set.filter (\(src, dst) -> t /= src && t /= dst) oldEdges
+   in IGraph {nodes = newNodes, edges = newEdges}
 
 instance Show InterferenceGraph where
   show (IGraph _ edges) = show $ Set.elems edges
