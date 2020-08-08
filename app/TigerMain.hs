@@ -14,6 +14,7 @@ import           Assem
 
 import           Text.Parsec           (runParser)
 import           TigerAbs
+import           TigerAlloc
 import           TigerCanon
 import           TigerEscap
 import           TigerFrame
@@ -111,8 +112,8 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
--- allocStep :: Options -> [([Instr], Frame)] -> StGen [[Instr]]
--- allocStep _ instrs = mapM (\(i, f) -> runAllocator i f) instrs
+allocStep :: Options -> [([Instr], Frame)] -> StGen [AllocState]
+allocStep _ instrs = mapM (\(i, f) -> runAllocator i f) instrs
 
 -- tiger :: Options -> Exp -> StGen [[Instr]]
 tiger opt exp = do
@@ -121,18 +122,19 @@ tiger opt exp = do
   let (stmts, frames) = unzip stmtsWithFrames
   canonStmts <- canonStep opt stmts
   munchInstr <- munchStep opt canonStmts
-  let instrWithSink = zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
+  let instrWithSink =
+        zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
   let igraphs =
         map
           (\(instrs, _) -> calculateInterferenceGraph (instrs2graph instrs))
           instrWithSink
-  --     instrWithEpiAndPrologue = map procEntryExit3 instrWithSink
+      instrsWithEpiAndPrologue = map procEntryExit3 instrWithSink
+  allocState <- allocStep opt $ zip instrsWithEpiAndPrologue frames
   --     labelsAssembly = labels2Strings labels
-  -- allocInstr <- allocStep opt $ instrWithSink -- zip instrWithEpiAndPrologue frames
   -- Después de allocStep voy a tener los src y dst con la posta... supuestamente.
   -- Sobreescribimos los s0 d0, con lo de las listas
   -- let programa = map instrs2Strings allocInstr
-  return $ igraphs
+  return $ allocState
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt

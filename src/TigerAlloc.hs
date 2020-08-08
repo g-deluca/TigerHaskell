@@ -1,21 +1,26 @@
 module TigerAlloc where
 
-import           Assem
+import           Control.Monad
 import           Control.Monad.State
+
 import qualified Data.Map            as M
 import qualified Data.Set            as S
+
+import           Assem
 import           TigerFrame
 import           TigerLiveness       as IGraph
 import           TigerMakeGraph
 import           TigerTemp
 import           TigerUnique
 
+import           Debug.Trace
+
 data Worklists =
   Worklists
     { simplifyWL :: [Temp]
     , freezeWL   :: [Temp]
     , spillWL    :: [Temp]
-    }
+    } deriving Show
 
 data AllocState =
   AllocState
@@ -24,6 +29,9 @@ data AllocState =
     -- Me llevo el stack de nodos con el grafo correspondiente a ese momento para poder "restaurarlo"
     , stack     :: [(Temp, InterferenceGraph)]
     }
+
+instance Show AllocState where
+  show allocState = show $ map fst (stack allocState)
 
 initialState :: AllocState
 initialState =
@@ -92,15 +100,21 @@ simplify = do
 
 -------------
 -- Main
-allocate :: [Instr] -> Frame -> Allocator ()
+allocate :: [Instr] -> Frame -> Allocator [Instr]
 allocate instrs frame = do
   build instrs frame
-  return ()
+  makeWorklists
+  loop
+  return []
 
 loop :: Allocator ()
 loop = do
   st <- get
   let simplifyWorklist = simplifyWL $ worklists st
   if simplifyWorklist /= []
-    then simplify
+    then simplify >> loop
     else return ()
+
+-- Manejo de la mónada
+runAllocator :: [Instr] -> Frame -> StGen AllocState
+runAllocator instrs frame = flip execStateT initialState (allocate instrs frame)
