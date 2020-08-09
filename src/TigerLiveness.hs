@@ -130,14 +130,15 @@ buildIGraph :: FlowGraph Instr -> LivenessMap -> InterferenceGraph
 buildIGraph fcg livenessMap =
   let fcgNodes = Set.elems $ G.nodes $ graph fcg
       newEdges = buildIGraphEdges fcgNodes fcg livenessMap
+      newNodes = Set.fromList $ concat $ Map.elems (def fcg) ++ Map.elems (use fcg)
       -- Acá tenemos las aristas medio peladas, falta darle estructura
-      allTemps =
-        Set.elems $
-        foldl
-          (\accum (tA, tB) -> Set.insert tA (Set.insert tB accum))
-          Set.empty
-          newEdges
-   in IGraph {nodes = Set.fromList allTemps, edges = Set.fromList newEdges}
+      -- allTemps =
+      --   Set.elems $
+      --   foldl
+      --     (\accum (tA, tB) -> Set.insert tA (Set.insert tB accum))
+      --     Set.empty
+      --     newEdges
+   in IGraph {nodes = newNodes, edges = Set.fromList newEdges}
 
 buildIGraphEdges ::
      [G.Node Instr] -> FlowGraph Instr -> LivenessMap -> [(Temp, Temp)]

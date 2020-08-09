@@ -51,6 +51,7 @@ library
         , TigerLiveness
         , TigerAlloc
   build-depends:       base
+                       , split
                        , containers
                        , text
                        , mtl
@@ -75,6 +76,7 @@ executable HaskTiger
   main-is:             TigerMain.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
+                       , split
                        , containers
                        , text
                        , mtl

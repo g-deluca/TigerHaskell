@@ -4,6 +4,7 @@ import           Control.Monad
 import           Control.Monad.State
 
 import qualified Data.List           as L
+import qualified Data.List.Split     as Split
 import qualified Data.Map            as M
 import qualified Data.Set            as S
 
@@ -35,10 +36,13 @@ data AllocState =
     , colorsMap :: M.Map Temp Temp
     }
 
-instance Show AllocState where
-  show allocState =
-    show (colorsMap allocState) ++ " >>> " ++ show (igraph allocState)
+type ColorsMap = M.Map Temp Temp
 
+instance Show AllocState where
+  show allocState = show (igraph allocState)
+
+-------------
+-- Initial state
 initialState :: AllocState
 initialState =
   AllocState
@@ -63,7 +67,7 @@ k = length allRegs - length specialregs
 allColors :: S.Set Temp
 allColors = S.fromList $ allRegs L.\\ specialregs
 
-initColorsMap :: M.Map Temp Temp
+initColorsMap :: ColorsMap
 initColorsMap = M.fromList (zip precolored precolored)
 
 -------------
@@ -144,6 +148,82 @@ assignColors = do
       -- Súper imperativo: quedó la recursión en un elemento que está en el estado (stack)
       assignColors
 
+-- Una vez que tenemos el mapa de colores construidos tenemos que reemplazar los
+-- temps que aparecen en las Instr por los colores (aka registros de la máquina).
+--
+-- No necesita del estado de Allocator más que el colorsMap ya calculado así que
+-- no hace falta que sea monádica
+applyColors :: [Instr] -> ColorsMap -> [Instr]
+applyColors [] _ = []
+applyColors ((Oper assem src dst jmp):instrs) colorsMap =
+  let newSrc = map (\t -> lookUp colorsMap t "newSrc opr >>>") src
+      newDst = map (\t -> lookUp colorsMap t "newDst oper >>>") dst
+      newOper = replaceTemps $ Oper assem newSrc newDst jmp
+   in newOper : applyColors instrs colorsMap
+applyColors ((Move assem src dst):instrs) colorsMap =
+  let newSrc = lookUp colorsMap src "newSrc move >>>"
+      newDst = lookUp colorsMap dst "newDst move >>>"
+      newMove = replaceTemps $ Move assem newSrc newDst
+   in newMove : applyColors instrs colorsMap
+-- En los labels no hay que plicar colores pq no hay temporales
+applyColors (otherInstr:instrs) colorsMap =
+  otherInstr : applyColors instrs colorsMap
+
+replaceDst :: Instr -> Instr
+replaceDst (Oper assem src dst jmp) =
+  case Split.splitOn "d0" assem
+    -- Caso 1: La instrucción no tiene temporales de destino
+        of
+    [oneInstr] -> Oper oneInstr src dst jmp
+    -- Caso 2: La instrucción tiene exactamente un d0, por lo que podemos asumir que
+    -- el registro correspondiente está en (head dst)
+    [beforeDest, afterDest] ->
+      Oper (beforeDest ++ makeStringT (head dst) ++ afterDest) src dst jmp
+    -- Cas0 3: Hay alguna instrucción con más de un destino (no debería por las instrucciones que elegimos)
+    _ ->
+      error $
+      "[replaceDst] Apparently theres more than one destination on instruction: " ++
+      assem
+replaceDst (Move assem src dst) =
+  case Split.splitOn "d0" assem of
+    [oneInstr] -> Move oneInstr src dst
+    [beforeDest, afterDest] ->
+      Move (beforeDest ++ makeStringT dst ++ afterDest) src dst
+    _ ->
+      error $
+      "[replaceDst] Apparently theres more than one destination on instruction: " ++
+      assem
+replaceDst otherInstr = otherInstr
+
+replaceSrc :: Instr -> Instr
+replaceSrc (Oper assem src dst jmp) =
+  case Split.splitOn "s0" assem
+    -- Caso 1: La instrucción no tiene temporales de destino
+        of
+    [oneInstr] -> Oper oneInstr src dst jmp
+    -- Caso 2: La instrucción tiene exactamente un s0, por lo que podemos asumir que
+    -- el registro correspondiente está en (head src)
+    [beforeSrc, afterSrc] ->
+      Oper (beforeSrc ++ makeStringT (head src) ++ afterSrc) src dst jmp
+    -- Cas0 3: Hay alguna instrucción con más de un origen (no debería por las instrucciones que elegimos)
+    _ ->
+      error $
+      "[replaceDst] Apparently theres more than one src on instruction: " ++
+      assem
+replaceSrc (Move assem src dst) =
+  case Split.splitOn "s0" assem of
+    [oneInstr] -> Move oneInstr src dst
+    [beforeSrc, afterSrc] ->
+      Move (beforeSrc ++ makeStringT src ++ afterSrc) src dst
+    _ ->
+      error $
+      "[replaceDst] Apparently theres more than one destination on instruction: " ++
+      assem
+replaceSrc otherInstr = otherInstr
+
+replaceTemps :: Instr -> Instr
+replaceTemps = replaceDst . replaceSrc
+
 -------------
 -- Main
 allocate :: [Instr] -> Frame -> Allocator [Instr]
@@ -152,7 +232,9 @@ allocate instrs frame = do
   makeWorklists
   loop
   assignColors
-  return []
+  st <- get
+  let newInstr = applyColors instrs (colorsMap st)
+  return newInstr
 
 loop :: Allocator ()
 loop = do
@@ -163,5 +245,5 @@ loop = do
     else return ()
 
 -- Manejo de la mónada
-runAllocator :: [Instr] -> Frame -> StGen AllocState
-runAllocator instrs frame = flip execStateT initialState (allocate instrs frame)
+runAllocator :: [Instr] -> Frame -> StGen ([Instr], AllocState)
+runAllocator instrs frame = flip runStateT initialState (allocate instrs frame)

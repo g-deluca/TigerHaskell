@@ -112,7 +112,7 @@ canonStep _ stmts = mapM tankCanonizer stmts
 munchStep :: Options -> [[Stm]] -> StGen [[Instr]]
 munchStep _ stmtss = mapM runMordisco stmtss
 
-allocStep :: Options -> [([Instr], Frame)] -> StGen [AllocState]
+allocStep :: Options -> [([Instr], Frame)] -> StGen [([Instr], AllocState)]
 allocStep _ instrs = mapM (\(i, f) -> runAllocator i f) instrs
 
 -- tiger :: Options -> Exp -> StGen [[Instr]]
@@ -124,17 +124,13 @@ tiger opt exp = do
   munchInstr <- munchStep opt canonStmts
   let instrWithSink =
         zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
-  let igraphs =
-        map
-          (\(instrs, _) -> calculateInterferenceGraph (instrs2graph instrs))
-          instrWithSink
-      instrsWithEpiAndPrologue = map procEntryExit3 instrWithSink
-  allocState <- allocStep opt $ zip instrsWithEpiAndPrologue frames
+  let instrsWithEpiAndPrologue = map procEntryExit3 instrWithSink
+  [(newInstr, allocState)] <- allocStep opt $ zip instrsWithEpiAndPrologue frames
   --     labelsAssembly = labels2Strings labels
   -- Después de allocStep voy a tener los src y dst con la posta... supuestamente.
   -- Sobreescribimos los s0 d0, con lo de las listas
   -- let programa = map instrs2Strings allocInstr
-  return $ allocState
+  return $  newInstr
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
@@ -147,8 +143,8 @@ main = do
   rawAst <- parserStep opts' s sourceCode
   ast <- calculoEscapadas rawAst opts'
   when (optArbol opts') (showExp ast)
-  asd <- runTiger opts' ast
-  putStrLn $ show asd
+  allocatedInstrs <- runTiger opts' ast
+  putStrLn $ foldl (\ code instr -> code ++ "\n" ++ show instr) "" allocatedInstrs
   return ()
 
 labels2Strings :: [Frag] -> String

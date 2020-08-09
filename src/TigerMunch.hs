@@ -9,7 +9,7 @@ import           TigerUnique
 
 import           Control.Monad.State
 import           Data.Text           (unpack)
-import Debug.Trace
+import           Debug.Trace
 
 class (Monad w, TLGenerator w) =>
       InstrEmitter w
@@ -31,7 +31,8 @@ munchStm (ExpS e) = void $ munchExp e
 munchStm (T.Move (Temp t) e2) = do
   t2 <- munchExp e2
   emit $ A.Move {massem = "movq s0, d0\n", msrc = t2, mdst = t}
-munchStm (T.Move e1 e2) = do -- T.Move e1 e2 => e1 <- e2
+munchStm (T.Move e1 e2) -- T.Move e1 e2 => e1 <- e2
+ = do
   stm1 <- munchExp e1
   stm2 <- munchExp e2
   emit $ A.Move {massem = "movq s0, d0\n", msrc = stm2, mdst = stm1}
@@ -146,7 +147,13 @@ munchExp (T.Binop T.Plus el er) = do
   -- en d0 pongo el valor de s0, res = tl
   emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   -- en d0 = (d0) + (s0)
-  emit $ Oper {oassem = "addq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+  emit $
+    Oper
+      { oassem = "addq s0, d0\n"
+      , osrc = [tr, res]
+      , odst = [res]
+      , ojump = Nothing
+      }
   return res
 munchExp (T.Binop T.Minus el er) = do
   tl <- munchExp el
@@ -155,7 +162,11 @@ munchExp (T.Binop T.Minus el er) = do
   emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "subq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      { oassem = "subq s0, d0\n"
+      , osrc = [tr, res]
+      , odst = [res]
+      , ojump = Nothing
+      }
   return res
 -------------
 -- Pequeña optimización ;)
@@ -196,12 +207,14 @@ munchExp (T.Binop T.Mul el er) = do
       , ojump = Nothing
       }
   return res
-munchExp (T.Binop T.Div el er) = do
+munchExp (T.Binop T.Div el er)
   -- idivq divisor --> (rdx:rax) / divisor => rax resultado, rdx resto
+ = do
   tl <- munchExp el
   tr <- munchExp er
   -- pongo 0's en rax porque no me interesa dividir en 128bits
-  emit $ Oper {oassem = "movq $0, d0\n", osrc = [], odst = [rax], ojump = Nothing}
+  emit $
+    Oper {oassem = "movq $0, d0\n", osrc = [], odst = [rax], ojump = Nothing}
   emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = rdx}
   emit $
     Oper
@@ -218,7 +231,11 @@ munchExp (T.Binop T.And el er) = do
   emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "andq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      { oassem = "andq s0, d0\n"
+      , osrc = [tr, res]
+      , odst = [res]
+      , ojump = Nothing
+      }
   return res
 munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
@@ -236,12 +253,17 @@ munchExp (T.Binop T.XOr el er) = do
   emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "xorq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      { oassem = "xorq s0, d0\n"
+      , osrc = [tr, res]
+      , odst = [res]
+      , ojump = Nothing
+      }
   return res
 -- Esta es la parte callee (ya entre a la funcion que fue llamada, que hago antes y despues?)
-munchExp (T.Call (Name n) args) = do
+munchExp (T.Call (Name n) args)
   -- Llamada a procedimiento -- devuelve algo
   -- TODO: Esto lo debería hacer el caller, si lo hago primero acá no hay problema?
+ = do
   argRegs <- munchArgs args
   -- Llamamos a la función
   emit $
@@ -294,7 +316,6 @@ runMordisco stmts = do
   instrs <- tragar $ masticar stmts
   return $ reverse instrs
 
-
 --------------------------
 -- #######################
 -- Auxiliares
@@ -310,48 +331,44 @@ runMordisco stmts = do
 -- (this inversion of parameters was historically used to allow functions
 -- to be passed a variable number of parameters).
 munchArgs :: InstrEmitter e => [Exp] -> e [Temp]
-munchArgs args = munchArgs' 0 args 
+munchArgs args = munchArgs' 0 args
 
 munchArgs' :: InstrEmitter e => Int -> [Exp] -> e [Temp]
 munchArgs' _ [] = return []
-munchArgs' cont args = 
+munchArgs' cont args =
   if cont < 6
-  then do
   -- Puedo mandar argumento por registro
-    arg <- munchExp (head args)
-    let reg = argregs !! cont
-    emit $
-      Oper
-        { oassem = "movq s0, d0\n"
-        , osrc = [arg]
-        , odst = [reg]
-        , ojump = Nothing
-        }
-    otherRegs <- munchArgs' (cont + 1) (tail args)
-    return (reg : otherRegs)
-  else do
-  -- Los tengo que mandar a Stack, en el orden inverso
-    arg <- munchExp (last args)
-    emit $
-      Oper
-        { oassem = "pushq s0\n"
-        , osrc = [arg]
-        , odst = [sp]
-        , ojump = Nothing
-        }
-    munchArgs' (cont + 1) (init args)
-  
+    then do
+      arg <- munchExp (head args)
+      let reg = argregs !! cont
+      emit $
+        Oper
+          { oassem = "movq s0, d0\n"
+          , osrc = [arg]
+          , odst = [reg]
+          , ojump = Nothing
+          }
+      otherRegs <- munchArgs' (cont + 1) (tail args)
+      return (reg : otherRegs)
+    else do
+      arg <- munchExp (last args)
+      emit $
+        Oper {oassem = "pushq s0\n", osrc = [arg], odst = [sp], ojump = Nothing}
+      munchArgs' (cont + 1) (init args)
+
 -- Before calling a subroutine, the caller should save the contents of certain registers that are designated caller-saved.
 emitPushList :: InstrEmitter e => [Temp] -> e ()
 emitPushList [] = return ()
 emitPushList (reg:regs) = do
-  emit $ Oper {oassem = "pushq s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
+  emit $
+    Oper {oassem = "pushq s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
   emitPushList regs
 
 emitPopList :: InstrEmitter e => [Temp] -> e ()
 emitPopList [] = return ()
 emitPopList (reg:regs) = do
-  emit $ Oper {oassem = "popq d0\n", osrc = [], odst = [reg, sp], ojump = Nothing}
+  emit $
+    Oper {oassem = "popq d0\n", osrc = [], odst = [reg, sp], ojump = Nothing}
   emitPopList regs
 
 -- data Relop = EQ | NE | LT | GT | LE | GE | ULT | ULE | UGT | UGE
