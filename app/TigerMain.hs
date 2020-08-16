@@ -124,13 +124,17 @@ tiger opt exp = do
   munchInstr <- munchStep opt canonStmts
   let instrWithSink =
         zipWith (\f bd -> (procEntryExit2 f bd, f)) frames munchInstr
-  let instrsWithEpiAndPrologue = map procEntryExit3 instrWithSink
-  [(newInstr, allocState)] <- allocStep opt $ zip instrsWithEpiAndPrologue frames
-  --     labelsAssembly = labels2Strings labels
-  -- Después de allocStep voy a tener los src y dst con la posta... supuestamente.
-  -- Sobreescribimos los s0 d0, con lo de las listas
-  -- let programa = map instrs2Strings allocInstr
-  return $  newInstr
+  -- Instrucciones "coloreadas" (con el estado pq todavía necesitamos debugging)
+  newInstrsWithState <- allocStep opt instrWithSink
+  let newInstrs = map fst newInstrsWithState
+  let instrsWithEpiAndPrologue = map procEntryExit3 $ zip newInstrs frames
+  let instrsWithReplacedTemps
+        -- A pesar de que al aplicar los colores ya cambiamos el string de la
+        -- instrucción, lo volvemos a hacer acá por el epílogo y prólogo
+       = map replaceTemps (concat instrsWithEpiAndPrologue)
+  let assembly = instrs2Strings instrsWithReplacedTemps
+  let labelsAssembly = labels2Strings labels
+  return $ labelsAssembly ++ "\n" ++ assembly
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt
@@ -143,9 +147,8 @@ main = do
   rawAst <- parserStep opts' s sourceCode
   ast <- calculoEscapadas rawAst opts'
   when (optArbol opts') (showExp ast)
-  allocatedInstrs <- runTiger opts' ast
-  putStrLn $ foldl (\ code instr -> code ++ "\n" ++ show instr) "" allocatedInstrs
-  return ()
+  assembly <- runTiger opts' ast
+  putStrLn assembly
 
 labels2Strings :: [Frag] -> String
 labels2Strings [] = ""
@@ -163,9 +166,4 @@ labels2Strings ((Proc _ _):_) = error "Que hace esto acá?"
 
 instrs2Strings :: [Instr] -> String
 instrs2Strings instrs =
-  foldl (\programa instr -> programa ++ instr2String instr ++ "\n") "" instrs
-
-instr2String :: Instr -> String
-instr2String (Oper str src dst _jump) = undefined
-instr2String (Move str src dst)       = undefined
-instr2String (Label label _)          = label
+  foldl (\programa instr -> programa ++ show instr ++ "\n") "" instrs

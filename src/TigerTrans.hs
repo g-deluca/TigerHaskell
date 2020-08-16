@@ -141,7 +141,7 @@ getParent []       = P.error "No fuimos del outermost level"
 getParent (_ : xs) = xs
 
 outermost :: Level
-outermost = [MkLI (newFrame (pack "main") []) (-1)]
+outermost = [MkLI (newFrame (pack "_tigermain") []) (-1)]
 
 -- | Clase encargada del manejo de memoria y niveles.
 -- Esta etapa va a consumir el AST y construir un nuevo lenguaje llamado Código

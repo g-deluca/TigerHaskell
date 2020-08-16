@@ -217,7 +217,7 @@ replaceSrc (Move assem src dst) =
       Move (beforeSrc ++ makeStringT src ++ afterSrc) src dst
     _ ->
       error $
-      "[replaceDst] Apparently theres more than one destination on instruction: " ++
+      "[replaceDst] Apparently theres more than one src on instruction: " ++
       assem
 replaceSrc otherInstr = otherInstr
 
