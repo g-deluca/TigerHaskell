@@ -132,9 +132,10 @@ tiger opt exp = do
         -- A pesar de que al aplicar los colores ya cambiamos el string de la
         -- instrucción, lo volvemos a hacer acá por el epílogo y prólogo
        = map replaceTemps (concat instrsWithEpiAndPrologue)
-  let assembly = instrs2Strings instrsWithReplacedTemps
+  let instrsAssembly = instrs2Strings instrsWithReplacedTemps
   let labelsAssembly = labels2Strings labels
-  return $ labelsAssembly ++ "\n" ++ assembly
+  let assembly = ".data\n" ++ labelsAssembly ++ "\n.text\n" ++instrsAssembly
+  return assembly
 
 -- runTiger :: Options -> Exp -> IO [[Instr]]
 runTiger opt = return . fst . flip TigerUnique.evalState 0 . tiger opt

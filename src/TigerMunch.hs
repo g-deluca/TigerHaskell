@@ -94,8 +94,7 @@ munchExp (Name l) = do
   r <- newTemp
   emit $
     Oper
-      -- TODO: Esto es cargar algo del .data ?
-      { oassem = "movq " ++ show l ++ ", d0\n"
+      { oassem = "movq " ++ makeStringL l ++ ", d0\n"
       , osrc = []
       , odst = [r]
       , ojump = Nothing

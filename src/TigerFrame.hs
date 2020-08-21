@@ -263,7 +263,7 @@ procEntryExit3 :: ([Instr], Frame) -> [Instr]
 procEntryExit3 (body, frame) =
     let frameOffset = wSz * ((actualLocal frame) + (actualStackArg frame))
     in
-    [   Oper {oassem = ".global " ++ (unpack $ name frame) ++ "\n", osrc = [], odst = [], ojump=Nothing},
+    [   Oper {oassem = ".globl " ++ (unpack $ name frame) ++ "\n", osrc = [], odst = [], ojump=Nothing},
         Oper {oassem = ".type " ++ (unpack $ name frame) ++ ", @function" ++ "\n", osrc = [], odst = [], ojump=Nothing},
         Assem.Label {lassem = (unpack $ name frame)++ ":\n", llab=name frame },
         Oper {oassem = "pushq s0\n", osrc=[fp], odst=[sp],ojump=Nothing }, -- pusheo el frame-pointer
