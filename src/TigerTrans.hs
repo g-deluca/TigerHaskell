@@ -339,13 +339,16 @@ instance (MemM w) => IrGen w where
           slink = if calleeLevel > callerLevel
                   then Temp fp --  TODO: ¿Está bien esto? ¿P.error "Error en static link"?
                   else F.auxexp (callerLevel - calleeLevel)
+          args' = case external of
+            Runtime -> args
+            Propia -> (slink:args)
         case isproc of
             IsProc ->
                 return $ Nx $
-                   ExpS $ call (slink:args)
+                   ExpS $ call args'
             IsFun -> do
                 res <- newTemp
-                return $ Ex $ call (slink:args)
+                return $ Ex $ call args'
     -- letExp :: [BExp] -> BExp -> w BExp
     letExp [] e = do
       -- Des-empaquetar y empaquetar como un |Ex| puede generar
