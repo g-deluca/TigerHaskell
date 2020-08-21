@@ -271,7 +271,7 @@ munchExp (T.Call (Name n) args)
   -- Llamamos a la función
   emit $
     Oper
-      { oassem = "callq " ++ unpack n ++ "\n"
+      { oassem = "call " ++ unpack n ++ "\n"
       , osrc = []
       , odst = calldefs
       , ojump = Nothing
