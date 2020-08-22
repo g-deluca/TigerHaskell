@@ -26,29 +26,20 @@ import           Assem
 
 -- | Caller-save registers
 
-rax = pack "%rax"
-rcx = pack "%rcx"
-rdx = pack "%rdx"
-rdi = pack "%rdi"
-rsi = pack "%rsi"
-rsp = pack "%rsp"
-r8  = pack "%r8"
-r9  = pack "%r9"
-r10  = pack "%r10"
-r11  = pack "%r11"
-
+eax = pack "%eax"
+ecx = pack "%ecx"
+edx = pack "%edx"
 
 -- | Callee-save registers
-rbx = pack "%rbx"
-rbp = pack "%rbp"
-r12 = pack "%r12"
-r13 = pack "%r13"
-r14 = pack "%r14"
-r15 = pack "%r15"
+edi = pack "%edi"
+esi = pack "%esi"
+esp = pack "%esp"
+ebx = pack "%ebx"
+ebp = pack "%ebp"
 
-rv = rax
-sp = rsp
-fp = rbp
+rv = eax
+sp = esp
+fp = ebp
 -- -- | Registros muy usados.
 -- rv, fp, sp, bp :: Temp
 
@@ -75,7 +66,7 @@ fp = rbp
 -- | Word size in bytes
 -- “quadword” refers to an eight-byte value (suffix​ ​q​).
 wSz :: Int
-wSz = 8
+wSz = 4
 
 -- | Base two logarithm of word size in bytes
 log2WSz :: Int
@@ -107,18 +98,17 @@ localsInicial = 0
 specialregs :: [Temp]
 -- Los registros que una llamada pisa, deberian ser destino de un call
 calldefs = [rv]
-specialregs = [rv, sp, fp]
+specialregs = [sp, fp]
 
 argregs, calleesaves, callersaves :: [Temp]
--- ​%rdi​,​ %rsi​, ​%rdx​, ​%rcx​, ​%r8​, and ​%r9​ are used to pass the first six integer or pointer parameters to called functions.
--- (in order: rdi, rsi, rdx, rcx, r8, r9).
-argregs = [rdi, rsi, rdx, rcx, r8, r9]
+argregs = error "Intentamos acceder a argregs"
 -- Preservados por la subrutina que se llama
-calleesaves = [rbx, rbp, r12, r13, r14, r15]
+calleesaves = [edi, esi, esp, ebx, ebp]
 -- Preservados por el que llama a la subrutina
-callersaves = [r10, r11]
+callersaves = [eax, ecx, edx]
 
-allRegs = argregs ++ calleesaves ++ callersaves ++ specialregs
+allRegs = calleesaves ++ callersaves
+
 -- | Tipo de dato que define el acceso a variables.
 data Access =
   -- | En memoria, acompañada de una dirección
@@ -206,24 +196,24 @@ externalCall s = Call (Name $ pack s)
 -- Dependiendo de la arquitectura algunos pueden ir por memoria o por stack. Salvo obviamente
 -- que escapen, en ese caso tienen que ir a memoria.
 allocArg :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
-allocArg fr Escapa = do
+allocArg fr escapa = do
   let actual = actualArg fr
       acc    = InFrame $ actual * wSz + argsGap
-  return (fr { formals = (formals fr) ++ [Escapa], actualStackArg = (actualStackArg fr) + 1,
+  return (fr { formals = (formals fr) ++ [escapa], actualStackArg = (actualStackArg fr) + 1,
                 actualArg = actual + 1 }, acc)
-allocArg fr NoEscapa =
-  if actualArg fr < 6
-  then 
-  -- Aún tengo registros disponibles para argumentos
-    let actual = actualArg fr
-        argReg = argregs !! actual -- TODO: argregs deberia estar en orden. como el index arranca de 0, esto elige el proximo bien.
-    in return (fr { formals = (formals fr) ++ [NoEscapa], actualArg = actual + 1}, InReg argReg)
-  else
-  -- Ya no tengo registros lo mando a stack
-    let actual = actualArg fr
-        acc    = InFrame $ actual + wSz + argsGap
-    in return (fr { formals = (formals fr) ++ [Escapa], actualArg = actual + 1,
-                    actualStackArg = (actualStackArg fr) + 1}, acc)
+-- allocArg fr NoEscapa =
+--   if actualArg fr < 6
+--   then 
+--   -- Aún tengo registros disponibles para argumentos
+--     let actual = actualArg fr
+--         argReg = argregs !! actual -- TODO: argregs deberia estar en orden. como el index arranca de 0, esto elige el proximo bien.
+--     in return (fr { formals = (formals fr) ++ [NoEscapa], actualArg = actual + 1}, InReg argReg)
+--   else
+--   -- Ya no tengo registros lo mando a stack
+--     let actual = actualArg fr
+--         acc    = InFrame $ actual + wSz + argsGap
+--     in return (fr { formals = (formals fr) ++ [Escapa], actualArg = actual + 1,
+--                     actualStackArg = (actualStackArg fr) + 1}, acc)
 
 allocLocal :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
 allocLocal fr Escapa =
@@ -266,28 +256,28 @@ procEntryExit3 (body, frame) =
     [   Oper {oassem = ".globl " ++ (unpack $ name frame) ++ "\n", osrc = [], odst = [], ojump=Nothing},
         Oper {oassem = ".type " ++ (unpack $ name frame) ++ ", @function" ++ "\n", osrc = [], odst = [], ojump=Nothing},
         Assem.Label {lassem = (unpack $ name frame)++ ":\n", llab=name frame },
-        Oper {oassem = "pushq s0\n", osrc=[fp], odst=[sp],ojump=Nothing }, -- pusheo el frame-pointer
-        Assem.Move {massem = "movq s0, d0\n", mdst=fp, msrc=sp} -- el frame-pointer apunta a donde está el stack ahora
+        Oper {oassem = "push s0\n", osrc=[fp], odst=[sp],ojump=Nothing }, -- pusheo el frame-pointer
+        Assem.Move {massem = "mov s0, d0\n", mdst=fp, msrc=sp} -- el frame-pointer apunta a donde está el stack ahora
     ]
     ++ pushList calleesaves ++
     [
-        Oper {oassem = "subq $" ++ show frameOffset ++ ", d0\n", osrc = [], odst = [sp], ojump = Nothing}
+        Oper {oassem = "sub $" ++ show frameOffset ++ ", d0\n", osrc = [], odst = [sp], ojump = Nothing}
     ]
     ++ body ++
     [
-        Oper {oassem = "addq $" ++ show frameOffset ++ ", d0\n", osrc = [], odst = [sp], ojump = Nothing}
+        Oper {oassem = "add $" ++ show frameOffset ++ ", d0\n", osrc = [], odst = [sp], ojump = Nothing}
     ]
     ++ popList ((reverse calleesaves) ++ [fp]) ++
     [
-        Oper {oassem = "ret\n", osrc = [rax], odst = [], ojump = Nothing}
+        Oper {oassem = "ret\n", osrc = [eax], odst = [], ojump = Nothing}
     ]
 
 pushList :: [Temp] -> [Instr]
 pushList [] = []
-pushList (reg:regs) = (Oper {oassem = "pushq s0\n", osrc=[reg], odst=[sp], ojump=Nothing}): pushList regs
+pushList (reg:regs) = (Oper {oassem = "push s0\n", osrc=[reg], odst=[sp], ojump=Nothing}): pushList regs
 
 popList :: [Temp] -> [Instr]
 popList [] = []
-popList (reg:regs) = (Oper {oassem = "popq s0\n", osrc=[reg], odst=[sp], ojump=Nothing}): popList regs
+popList (reg:regs) = (Oper {oassem = "pop s0\n", osrc=[reg], odst=[sp], ojump=Nothing}): popList regs
 
 -- https://stackoverflow.com/questions/24549912/where-and-why-is-the-x64-frame-pointer-supposed-to-point-windows-x64-abi

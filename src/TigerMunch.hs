@@ -30,12 +30,12 @@ munchStm (ExpS e) = void $ munchExp e
 -- TODO: Agregar casos para optimizar (o nah xd)
 munchStm (T.Move (Temp t) e2) = do
   t2 <- munchExp e2
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = t2, mdst = t}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = t2, mdst = t}
 munchStm (T.Move e1 e2) -- T.Move e1 e2 => e1 <- e2
  = do
   stm1 <- munchExp e1
   stm2 <- munchExp e2
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = stm2, mdst = stm1}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = stm2, mdst = stm1}
 munchStm (Jump (Name _) label) = do
   emit $
     Oper
@@ -55,7 +55,7 @@ munchStm (CJump relop e1 e2 l1 l2) = do
     -- de coloreo habíamos asumido que todas las instrucciones tienen como
     -- máximo un s0 y un d0. Para probar y no meterme en un refactor grande dejo
     -- esto así, pero estamos "complejizando" el árbol de interferencia
-      {oassem = "cmpq s0, d0\n", osrc = [te1, te2], odst = [te2], ojump = Nothing}
+      {oassem = "cmp s0, d0\n", osrc = [te1, te2], odst = [te2], ojump = Nothing}
     -- Saltamos dependiendo del tipo de operacion fue True
   let assemRelOp = relop2assem relop
   emit $
@@ -84,7 +84,7 @@ munchExp (Const i) = do
   r <- newTemp
   emit $
     Oper
-      { oassem = "movq $" ++ show i ++ ", d0\n"
+      { oassem = "mov $" ++ show i ++ ", d0\n"
       , osrc = []
       , odst = [r]
       , ojump = Nothing
@@ -94,7 +94,7 @@ munchExp (Name l) = do
   r <- newTemp
   emit $
     Oper
-      { oassem = "movq " ++ makeStringL l ++ ", d0\n"
+      { oassem = "mov $" ++ makeStringL l ++ ", d0\n"
       , osrc = []
       , odst = [r]
       , ojump = Nothing
@@ -107,7 +107,7 @@ munchExp (T.Mem (T.Binop T.Plus e (T.Const i))) = do
   te <- munchExp e
   emit $
     Oper
-      { oassem = "movq (s0, $" ++ show i ++ "), d0\n" -- movq (s0, $i), d0 => d0 = Mem[s0 + $i]
+      { oassem = "mov (s0, $" ++ show i ++ "), d0\n" -- mov (s0, $i), d0 => d0 = Mem[s0 + $i]
       , osrc = [te]
       , odst = [res]
       , ojump = Nothing
@@ -120,7 +120,7 @@ munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
   te <- munchExp e
   emit $
     Oper
-      { oassem = "movq (s0, $" ++ show i ++ "), d0\n"
+      { oassem = "mov (s0, $" ++ show i ++ "), d0\n"
       , osrc = [te]
       , odst = [res]
       , ojump = Nothing
@@ -130,7 +130,7 @@ munchExp (T.Mem (T.Const i)) = do
   res <- newTemp
   emit $
     Oper
-      { oassem = "movq $" ++ show i ++ ", d0\n"
+      { oassem = "mov $" ++ show i ++ ", d0\n"
       , osrc = []
       , odst = [res]
       , ojump = Nothing
@@ -140,7 +140,7 @@ munchExp (T.Mem e) = do
   te <- munchExp e
   res <- newTemp
   emit $
-    Oper {oassem = "movq s0, d0\n", osrc = [te], odst = [res], ojump = Nothing}
+    Oper {oassem = "mov s0, d0\n", osrc = [te], odst = [res], ojump = Nothing}
   return res
 -- Arrancamo' con Binop...
 munchExp (T.Binop T.Plus el er) = do
@@ -148,11 +148,11 @@ munchExp (T.Binop T.Plus el er) = do
   tr <- munchExp er
   res <- newTemp
   -- en d0 pongo el valor de s0, res = tl
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   -- en d0 = (d0) + (s0)
   emit $
     Oper
-      { oassem = "addq s0, d0\n"
+      { oassem = "add s0, d0\n"
       , osrc = [tr, res]
       , odst = [res]
       , ojump = Nothing
@@ -162,79 +162,53 @@ munchExp (T.Binop T.Minus el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "subq s0, d0\n"
+      { oassem = "sub s0, d0\n"
       , osrc = [tr, res]
       , odst = [res]
       , ojump = Nothing
       }
   return res
--------------
--- Pequeña optimización ;)
--- TODO: Anda a chequearla, no la encuentro en x86_64
--- munchExp (T.Binop T.Mul (Const i) er) = do
---   tr <- munchExp er
---   res <- newTemp
---   emit $
---     Oper
---       { oassem = "imulq d0, (s0), $" ++ show i ++ "\n"
---       , osrc = [tr]
---       , odst = [res]
---       , ojump = Nothing
---       }
---   return res
--- munchExp (T.Binop T.Mul el (Const i)) = do
---   tl <- munchExp el
---   res <- newTemp
---   emit $
---     Oper
---       { oassem = "imulq d0, (s0), $" ++ show i ++ "\n"
---       , osrc = [tl]
---       , odst = [res]
---       , ojump = Nothing
---       }
---   return res
--------------
 munchExp (T.Binop T.Mul el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "imulq s0, d0\n"
+      { oassem = "imul s0, d0\n"
       , osrc = [tr, res]
       , odst = [res]
       , ojump = Nothing
       }
   return res
 munchExp (T.Binop T.Div el er)
-  -- idivq divisor --> (rdx:rax) / divisor => rax resultado, rdx resto
+  -- idivq divisor --> (edx:eax) / divisor => eax resultado, edx resto
  = do
   tl <- munchExp el
   tr <- munchExp er
-  -- pongo 0's en rax porque no me interesa dividir en 128bits
+  -- pongo 0's en eax porque no me interesa dividir en 128bits
   emit $
-    Oper {oassem = "movq $0, d0\n", osrc = [], odst = [rax], ojump = Nothing}
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = rdx}
+    Oper {oassem = "mov $0, d0\n", osrc = [], odst = [eax], ojump = Nothing}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = edx}
   emit $
     Oper
-      { oassem = "idivq s0\n"
+      { oassem = "idiv s0\n"
       , osrc = [tr]
-      , odst = [rax, rdx] -- [division, resto]
+      , odst = [eax, edx] -- [division, resto]
       , ojump = Nothing
       }
-  return rax
+  return eax
 munchExp (T.Binop T.And el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "andq s0, d0\n"
+      { oassem = "and s0, d0\n"
       , osrc = [tr, res]
       , odst = [res]
       , ojump = Nothing
@@ -244,19 +218,19 @@ munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "orq s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
+      {oassem = "or s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.XOr el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "movq s0, d0\n", msrc = tl, mdst = res}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "xorq s0, d0\n"
+      { oassem = "xor s0, d0\n"
       , osrc = [tr, res]
       , odst = [res]
       , ojump = Nothing
@@ -267,7 +241,7 @@ munchExp (T.Call (Name n) args)
   -- Llamada a procedimiento -- devuelve algo
   -- TODO: Esto lo debería hacer el caller, si lo hago primero acá no hay problema?
  = do
-  argRegs <- munchArgs args
+  munchArgs args
   -- Llamamos a la función
   emit $
     Oper
@@ -280,14 +254,14 @@ munchExp (T.Call (Name n) args)
   -- Muevo el stack-pointer lo suficiente para que se "olvide" de los parametros
   emit $
     Oper
-      { oassem = "addq $" ++ (show (length argRegs * wSz)) ++ ", d0\n"
+      { oassem = "add $" ++ (show (length args * wSz)) ++ ", d0\n"
       , osrc = []
       , odst = [sp]
       , ojump = Nothing
       }
   -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
   -- The caller can assume that no other registers were modified by the subroutine.
-  return rax
+  return eax
 munchExp _ = error "No implementado ni con planes de hacerlo"
 
 -- | Definimos la mónada que instanciaremos en Emitter. Le puse Mordisco
@@ -324,54 +298,27 @@ runMordisco stmts = do
 -- Auxiliares
 -- #######################
 --------------------------
--- PAGINA 204
--- To pass parameters to the subroutine, we put up to six of them into registers
--- (in order: rdi, rsi, rdx, rcx, r8, r9).
--- If there are more than six parameters to the subroutine,
--- then push the rest onto the stack in reverse order (i.e. last parameter first)
--- – since the stack grows down, the first of the extra parameters
--- (really the seventh parameter) parameter will be stored at the lowest address
--- (this inversion of parameters was historically used to allow functions
--- to be passed a variable number of parameters).
-munchArgs :: InstrEmitter e => [Exp] -> e [Temp]
-munchArgs args = munchArgs' 0 args
-
-munchArgs' :: InstrEmitter e => Int -> [Exp] -> e [Temp]
-munchArgs' _ [] = return []
-munchArgs' cont args =
-  if cont < 6
-  -- Puedo mandar argumento por registro
-    then do
-      arg <- munchExp (head args)
-      let reg = argregs !! cont
-      emit $
-        Oper
-          { oassem = "movq s0, d0\n"
-          , osrc = [arg]
-          , odst = [reg]
-          , ojump = Nothing
-          }
-      otherRegs <- munchArgs' (cont + 1) (tail args)
-      return (reg : otherRegs)
-    else do
+munchArgs :: InstrEmitter e => [Exp] -> e ()
+munchArgs [] = return ()
+munchArgs args = do
       arg <- munchExp (last args)
       emit $
-        Oper {oassem = "pushq s0\n", osrc = [arg], odst = [sp], ojump = Nothing}
-      munchArgs' (cont + 1) (init args)
+        Oper {oassem = "push s0\n", osrc = [arg], odst = [sp], ojump = Nothing}
+      munchArgs (init args)
 
 -- Before calling a subroutine, the caller should save the contents of certain registers that are designated caller-saved.
 emitPushList :: InstrEmitter e => [Temp] -> e ()
 emitPushList [] = return ()
 emitPushList (reg:regs) = do
   emit $
-    Oper {oassem = "pushq s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
+    Oper {oassem = "push s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
   emitPushList regs
 
 emitPopList :: InstrEmitter e => [Temp] -> e ()
 emitPopList [] = return ()
 emitPopList (reg:regs) = do
   emit $
-    Oper {oassem = "popq d0\n", osrc = [], odst = [reg, sp], ojump = Nothing}
+    Oper {oassem = "pop d0\n", osrc = [], odst = [reg, sp], ojump = Nothing}
   emitPopList regs
 
 -- data Relop = EQ | NE | LT | GT | LE | GE | ULT | ULE | UGT | UGE

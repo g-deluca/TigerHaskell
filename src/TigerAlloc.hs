@@ -62,7 +62,7 @@ precolored = allRegs
 
 -- Cantidad de colores disponibles
 k :: Int
-k = length allRegs - length specialregs
+k = length allRegs -- - length specialregs
 
 allColors :: S.Set Temp
 allColors = S.fromList $ allRegs L.\\ specialregs

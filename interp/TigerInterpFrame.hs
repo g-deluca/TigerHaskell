@@ -4,7 +4,7 @@ import           TigerTemp
 import           TigerTree
 import           TigerAbs                       ( Escapa(..) )
 import           TigerSymbol
-import           TigerAssemTypes
+-- import           TigerAssemTypes
 import           Debug.Trace
 
 import           Prelude                 hiding ( exp )
