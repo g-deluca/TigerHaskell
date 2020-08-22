@@ -2,7 +2,6 @@ module TigerAlloc where
 
 import           Control.Monad
 import           Control.Monad.State
-
 import qualified Data.List           as L
 import qualified Data.List.Split     as Split
 import qualified Data.Map            as M
@@ -95,9 +94,19 @@ makeSimplifyWorklist = do
   let oldLists = worklists oldSt
   put $ oldSt {worklists = oldLists {simplifyWL = newSimplify}}
 
+makeSpillWorklist :: Allocator ()
+makeSpillWorklist = do
+  oldSt <- get
+  let nodos = nodes $ igraph oldSt
+  let initial = S.elems $ nodos `S.difference` (S.fromList precolored)
+  let newSpill = filter (\t -> degree t (igraph oldSt) >= k) initial
+  let oldLists = worklists oldSt
+  put $ oldSt {worklists = oldLists {spillWL = newSpill}}
+
 makeWorklists :: Allocator ()
 makeWorklists = do
   makeSimplifyWorklist
+  makeSpillWorklist
 
 -------------
 -- Simplify
@@ -118,6 +127,16 @@ simplify = do
       , igraph = newIGraph
       , worklists = oldWorklists {simplifyWL = newSimplifyWL}
       }
+
+selectPotentialSpill :: Allocator()
+selectPotentialSpill = do
+  st <- get
+  let oldWorklists = worklists st
+      selected = head $ spillWL oldWorklists 
+      newSpillWL = tail $ spillWL oldWorklists
+      newSimplifyWL = selected : (simplifyWL oldWorklists)
+  put $ st { worklists = oldWorklists {spillWL = newSpillWL, simplifyWL = newSimplifyWL}}
+
 
 -------------
 -- Asignar colores Acá vamos construyendo el colorsMap, asignandole un registro
@@ -240,9 +259,22 @@ loop :: Allocator ()
 loop = do
   st <- get
   let simplifyWorklist = simplifyWL $ worklists st
+      spillWorklist = spillWL $ worklists st
   if simplifyWorklist /= []
-    then simplify >> loop
-    else return ()
+    then simplify 
+    else if spillWorklist /= []
+      then selectPotentialSpill
+      else return ()
+  areEmpty <- checkAllWorklists
+  if areEmpty then return () else loop
+
+
+  
+checkAllWorklists :: Allocator Bool
+checkAllWorklists = do
+ st <- get
+ let wl = worklists st
+ return $ (simplifyWL wl) == [] && (spillWL wl) == []
 
 -- Manejo de la mónada
 runAllocator :: [Instr] -> Frame -> StGen ([Instr], AllocState)
