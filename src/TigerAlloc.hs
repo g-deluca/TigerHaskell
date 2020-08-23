@@ -223,7 +223,11 @@ replaceSrc (Oper assem src dst jmp) =
     -- Caso 2: La instrucción tiene exactamente un s0, por lo que podemos asumir que
     -- el registro correspondiente está en (head src)
     [beforeSrc, afterSrc] ->
-      Oper (beforeSrc ++ makeStringT (head src) ++ afterSrc) src dst jmp
+      case Split.splitOn "s1" afterSrc of
+        [oneInstr] ->
+          Oper (beforeSrc ++ makeStringT (head src) ++ afterSrc) src dst jmp
+        [afterBefore, afterAfter] ->
+          Oper (beforeSrc ++ makeStringT (head src) ++ afterBefore ++ makeStringT (last src) ++ afterAfter) src dst jmp
     -- Cas0 3: Hay alguna instrucción con más de un origen (no debería por las instrucciones que elegimos)
     _ ->
       error $

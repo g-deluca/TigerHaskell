@@ -54,8 +54,7 @@ munchStm (CJump relop e1 e2 l1 l2) = do
     -- TODO: ¡Ojo acá! Esto está mal, pongo el te2 como dst porque en la función
     -- de coloreo habíamos asumido que todas las instrucciones tienen como
     -- máximo un s0 y un d0. Para probar y no meterme en un refactor grande dejo
-    -- esto así, pero estamos "complejizando" el árbol de interferencia
-      {oassem = "cmp s0, d0\n", osrc = [te1, te2], odst = [te2], ojump = Nothing}
+      {oassem = "cmp s0, s1\n", osrc = [te1, te2], odst = [], ojump = Nothing}
     -- Saltamos dependiendo del tipo de operacion fue True
   let assemRelOp = relop2assem relop
   emit $
