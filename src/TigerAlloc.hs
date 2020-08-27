@@ -22,7 +22,10 @@ data Worklists =
     , freezeWL   :: [Temp]
     , spillWL    :: [Temp]
     }
-  deriving (Show)
+
+instance Show Worklists where
+  show (Worklists simp _ spill) =
+    "Simplify: " ++ show simp ++ "\n" ++ "Spill: " ++ show spill
 
 data AllocState =
   AllocState
@@ -38,7 +41,8 @@ data AllocState =
 type ColorsMap = M.Map Temp Temp
 
 instance Show AllocState where
-  show allocState = show (igraph allocState)
+  show allocState =
+    show (igraph allocState) ++ "\n" ++ show (worklists allocState)
 
 -------------
 -- Initial state
@@ -128,15 +132,18 @@ simplify = do
       , worklists = oldWorklists {simplifyWL = newSimplifyWL}
       }
 
-selectPotentialSpill :: Allocator()
+selectPotentialSpill :: Allocator ()
 selectPotentialSpill = do
   st <- get
   let oldWorklists = worklists st
-      selected = head $ spillWL oldWorklists 
+      selected = head $ spillWL oldWorklists
       newSpillWL = tail $ spillWL oldWorklists
       newSimplifyWL = selected : (simplifyWL oldWorklists)
-  put $ st { worklists = oldWorklists {spillWL = newSpillWL, simplifyWL = newSimplifyWL}}
-
+  put $
+    st
+      { worklists =
+          oldWorklists {spillWL = newSpillWL, simplifyWL = newSimplifyWL}
+      }
 
 -------------
 -- Asignar colores Acá vamos construyendo el colorsMap, asignandole un registro
@@ -227,7 +234,13 @@ replaceSrc (Oper assem src dst jmp) =
         [oneInstr] ->
           Oper (beforeSrc ++ makeStringT (head src) ++ afterSrc) src dst jmp
         [afterBefore, afterAfter] ->
-          Oper (beforeSrc ++ makeStringT (head src) ++ afterBefore ++ makeStringT (last src) ++ afterAfter) src dst jmp
+          Oper
+            (beforeSrc ++
+             makeStringT (head src) ++
+             afterBefore ++ makeStringT (last src) ++ afterAfter)
+            src
+            dst
+            jmp
     -- Cas0 3: Hay alguna instrucción con más de un origen (no debería por las instrucciones que elegimos)
     _ ->
       error $
@@ -265,20 +278,20 @@ loop = do
   let simplifyWorklist = simplifyWL $ worklists st
       spillWorklist = spillWL $ worklists st
   if simplifyWorklist /= []
-    then simplify 
+    then simplify
     else if spillWorklist /= []
-      then selectPotentialSpill
-      else return ()
+           then selectPotentialSpill
+           else return ()
   areEmpty <- checkAllWorklists
-  if areEmpty then return () else loop
+  if areEmpty
+    then return ()
+    else loop
 
-
-  
 checkAllWorklists :: Allocator Bool
 checkAllWorklists = do
- st <- get
- let wl = worklists st
- return $ (simplifyWL wl) == [] && (spillWL wl) == []
+  st <- get
+  let wl = worklists st
+  return $ (simplifyWL wl) == [] && (spillWL wl) == []
 
 -- Manejo de la mónada
 runAllocator :: [Instr] -> Frame -> StGen ([Instr], AllocState)

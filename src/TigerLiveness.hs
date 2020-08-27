@@ -51,10 +51,10 @@ mkLivenessMap flowGraph@(FlowGraph graph def use ismove) = do
       mkLiveOut :: (G.Node Instr) -> LivenessMap -> (Set.Set Temp)
       mkLiveOut node allNodes =
         let nodeSucc =
-              Set.map
+              P.map
                 (\succesor -> (allNodes Map.! succesor))
-                (G.succ node graph)
-         in Set.unions $ Set.toList $ Set.map liveIn nodeSucc
+                (Set.toList (G.succ node graph))
+         in Set.unions $ P.map liveIn nodeSucc
       mkLivenessNode :: G.Node Instr -> State LivenessMap Bool
       mkLivenessNode node = do
         allNodes <- get
@@ -130,14 +130,8 @@ buildIGraph :: FlowGraph Instr -> LivenessMap -> InterferenceGraph
 buildIGraph fcg livenessMap =
   let fcgNodes = Set.elems $ G.nodes $ graph fcg
       newEdges = buildIGraphEdges fcgNodes fcg livenessMap
-      newNodes = Set.fromList $ concat $ Map.elems (def fcg) ++ Map.elems (use fcg)
-      -- Acá tenemos las aristas medio peladas, falta darle estructura
-      -- allTemps =
-      --   Set.elems $
-      --   foldl
-      --     (\accum (tA, tB) -> Set.insert tA (Set.insert tB accum))
-      --     Set.empty
-      --     newEdges
+      newNodes =
+        Set.fromList $ concat $ Map.elems (def fcg) ++ Map.elems (use fcg)
    in IGraph {nodes = newNodes, edges = Set.fromList newEdges}
 
 buildIGraphEdges ::
@@ -149,10 +143,12 @@ buildIGraphEdges (thisNode:otherNodes) fcg livenessMap =
       defs = (def fcg) Map.! thisNode
       uses = (use fcg) Map.! thisNode
       isMove = (ismove fcg) Map.! thisNode
+      outAndDefs = out ++ defs
       aristas =
         if isMove
+          -- Since this is a move instruction, we now that uses is a list of one element
           then [(x, y) | x <- defs, y <- filter (/= (head $ uses)) out]
-          else [(x, y) | x <- defs, y <- out]
+          else [(x, y) | x <- defs, y <- outAndDefs]
    in aristas ++ buildIGraphEdges otherNodes fcg livenessMap
 
 calculateInterferenceGraph :: FlowGraph Instr -> InterferenceGraph
