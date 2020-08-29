@@ -1,8 +1,8 @@
 /* locals hide globals */
 let
-	var a :=0
-
-	function g (a : int) : int = a 
+	var j :=2
+	function g (a : int, b: int) : int = 
+      j
 in
- g (2)
+ g (5, 4)
 end

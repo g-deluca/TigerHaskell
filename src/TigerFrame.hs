@@ -84,14 +84,15 @@ fpPrevLev = 0
 -- | Esto es un offset previo a al lugar donde se encuentra el lugar de las variables
 -- o de los argumentos.
 argsGap, localsGap :: Int
-argsGap = wSz
-localsGap = 4
+-- Tenemos siempre el push %ebp, y tenemos que saltar el static-link
+argsGap = 3*wSz
+localsGap = wSz*7
 
 -- | Dan inicio a los contadores de argumentos, variables y registros usados.
 -- Ver |defaultFrame|
 argsInicial, regInicial, localsInicial :: Int
 argsInicial = 0
-regInicial = 1
+regInicial = 0
 localsInicial = 0
 
 -- | Listas de registros que define la llamada y registros especiales

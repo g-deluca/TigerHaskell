@@ -51,10 +51,10 @@ munchStm (CJump relop e1 e2 l1 l2) = do
     -- Primero realizo la comparación
   emit $
     Oper
-    -- TODO: ¡Ojo acá! Esto está mal, pongo el te2 como dst porque en la función
-    -- de coloreo habíamos asumido que todas las instrucciones tienen como
-    -- máximo un s0 y un d0. Para probar y no meterme en un refactor grande dejo
-      {oassem = "cmp s0, s1\n", osrc = [te1, te2], odst = [], ojump = Nothing}
+      -- osrc = [te2, te1] por la arq. hace la comparacion al revés
+      -- cmp $5, %rax
+      -- je  equals   # jmp equals if RAX == 5
+      {oassem = "cmp s0, s1\n", osrc = [te2, te1], odst = [], ojump = Nothing}
     -- Saltamos dependiendo del tipo de operacion fue True
   let assemRelOp = relop2assem relop
   emit $
@@ -101,45 +101,46 @@ munchExp (Name l) = do
   return r
 munchExp (Temp t) = return t
 munchExp (Eseq s e) = munchStm s >> munchExp e
-munchExp (T.Mem (T.Binop T.Plus e (T.Const i))) = do
-  res <- newTemp
-  te <- munchExp e
-  emit $
-    Oper
-      { oassem = "mov (s0, $" ++ show i ++ "), d0\n" -- mov (s0, $i), d0 => d0 = Mem[s0 + $i]
-      , osrc = [te]
-      , odst = [res]
-      , ojump = Nothing
-      }
-  return res
--- TODO: ¿Por qué agarramos puntualmente el caso de "Plus" y no
--- el resto. Así está en el libro, ¿but why?
-munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
-  res <- newTemp
-  te <- munchExp e
-  emit $
-    Oper
-      { oassem = "mov (s0, $" ++ show i ++ "), d0\n"
-      , osrc = [te]
-      , odst = [res]
-      , ojump = Nothing
-      }
-  return res
-munchExp (T.Mem (T.Const i)) = do
-  res <- newTemp
-  emit $
-    Oper
-      { oassem = "mov $" ++ show i ++ ", d0\n"
-      , osrc = []
-      , odst = [res]
-      , ojump = Nothing
-      }
-  trace ("ESTA CASO ES RARO!") return res
+-- munchExp (T.Mem (T.Binop T.Plus e (T.Const i))) = do
+--   res <- newTemp
+--   te <- munchExp e
+--   emit $
+--     Oper
+--       { oassem = "mov (s0, $" ++ show i ++ "), d0\n" -- mov (s0, $i), d0 => d0 = Mem[s0 + $i]
+--       , osrc = [te]
+--       , odst = [res]
+--       , ojump = Nothing
+--       }
+--   return res
+-- -- TODO: ¿Por qué agarramos puntualmente el caso de "Plus" y no
+-- -- el resto. Así está en el libro, ¿but why?
+-- munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
+--   res <- newTemp
+--   te <- munchExp e
+--   emit $
+--     Oper
+--       { oassem = "mov (s0, $" ++ show i ++ "), d0\n"
+--       , osrc = [te]
+--       , odst = [res]
+--       , ojump = Nothing
+--       }
+--   return res
+-- munchExp (T.Mem (T.Const i)) = do
+--   res <- newTemp
+--   emit $
+--     Oper
+--       { oassem = "mov $" ++ show i ++ ", d0\n"
+--       , osrc = []
+--       , odst = [res]
+--       , ojump = Nothing
+--       }
+--   trace ("ESTA CASO ES RARO!") return res
 munchExp (T.Mem e) = do
+  trace ("munchExp T.Mem: " ++  show e) (return ())
   te <- munchExp e
   res <- newTemp
   emit $
-    Oper {oassem = "mov s0, d0\n", osrc = [te], odst = [res], ojump = Nothing}
+    Oper {oassem = "mov (s0), d0\n", osrc = [te], odst = [res], ojump = Nothing}
   return res
 -- Arrancamo' con Binop...
 munchExp (T.Binop T.Plus el er) = do

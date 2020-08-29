@@ -1,2 +1,6 @@
 /* correct if */
-if (10 < 20) then print("hola") else print("chau")	
+let var a := 10
+    var b := 20
+in
+    if (a > b) then print("hola") else print("chau")
+end
