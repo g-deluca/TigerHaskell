@@ -143,12 +143,11 @@ buildIGraphEdges (thisNode:otherNodes) fcg livenessMap =
       defs = (def fcg) Map.! thisNode
       uses = (use fcg) Map.! thisNode
       isMove = (ismove fcg) Map.! thisNode
-      outAndDefs = out ++ defs
       aristas =
         if isMove
           -- Since this is a move instruction, we now that uses is a list of one element
           then [(x, y) | x <- defs, y <- filter (/= (head $ uses)) out]
-          else [(x, y) | x <- defs, y <- outAndDefs]
+          else [(x, y) | x <- defs, y <- out]
    in aristas ++ buildIGraphEdges otherNodes fcg livenessMap
 
 calculateInterferenceGraph :: FlowGraph Instr -> InterferenceGraph

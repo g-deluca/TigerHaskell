@@ -56,24 +56,24 @@ processNodes (thisNode@(Node _ (Label _ _)):instrs) fcg =
 processNodes (thisNode@(Node _ (Move _ src dst)):instrs) fcg =
   let nextNode = head instrs
       graphWithEdge = mkEdge thisNode nextNode (graph fcg)
-      newDef = Map.insert thisNode [src] (def fcg)
-      newUse = Map.insert thisNode [dst] (use fcg)
+      newDef = Map.insert thisNode [dst] (def fcg)
+      newUse = Map.insert thisNode [src] (use fcg)
       newIsmove = Map.insert thisNode True (ismove fcg)
    in processNodes instrs
         fcg {graph = graphWithEdge, def = newDef, use = newUse, ismove = newIsmove}
 processNodes (thisNode@(Node _ (Oper _ src dst (Nothing))):instrs) fcg =
   let nextNode = head instrs
       graphWithEdge = mkEdge thisNode nextNode (graph fcg)
-      newDef = Map.insert thisNode src (def fcg)
-      newUse = Map.insert thisNode dst (use fcg)
+      newDef = Map.insert thisNode dst (def fcg)
+      newUse = Map.insert thisNode src (use fcg)
       newIsmove = Map.insert thisNode False (ismove fcg)
    in processNodes instrs
         fcg {graph = graphWithEdge, def = newDef, use = newUse, ismove = newIsmove}
 processNodes (thisNode@(Node _ (Oper _ src dst (Just label))):instrs) fcg =
   let jmpNode = findNodeWithLabel (head label) (S.toList (nodes (graph fcg)))
       graphWithEdge = mkEdge thisNode jmpNode (graph fcg)
-      newDef = Map.insert thisNode src (def fcg)
-      newUse = Map.insert thisNode dst (use fcg)
+      newDef = Map.insert thisNode dst (def fcg)
+      newUse = Map.insert thisNode src (use fcg)
       newIsmove = Map.insert thisNode False (ismove fcg)
    in processNodes instrs
         fcg {graph = graphWithEdge, def = newDef, use = newUse, ismove = newIsmove}
@@ -93,13 +93,13 @@ processLastNode thisNode@(Node _ (Label _ _)) fcg =
       newIsmove = Map.insert thisNode False (ismove fcg)
   in fcg {def = newDef, use = newUse, ismove = newIsmove}
 processLastNode thisNode@(Node _ (Move _ src dst)) fcg =
-  let newDef = Map.insert thisNode [src] (def fcg)
-      newUse = Map.insert thisNode [dst] (use fcg)
+  let newDef = Map.insert thisNode [dst] (def fcg)
+      newUse = Map.insert thisNode [src] (use fcg)
       newIsmove = Map.insert thisNode True (ismove fcg)
   in fcg {def = newDef, use = newUse, ismove = newIsmove}
 processLastNode thisNode@(Node _ (Oper _ src dst (Nothing))) fcg =
-  let newDef = Map.insert thisNode src (def fcg)
-      newUse = Map.insert thisNode dst (use fcg)
+  let newDef = Map.insert thisNode dst (def fcg)
+      newUse = Map.insert thisNode src (use fcg)
       newIsmove = Map.insert thisNode False (ismove fcg)
   in fcg {def = newDef, use = newUse, ismove = newIsmove}
 processLastNode thisNode@(Node _ (Oper _ _ _ (Just _))) fcg =
