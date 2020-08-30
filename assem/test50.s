@@ -1,7 +1,7 @@
 .data
-L1:
-.long 4
-.string "hola"
+L2:
+.long 19
+.string "about to break loop"
 
 .text
 .globl _tigermain
@@ -26,19 +26,29 @@ push %ebp
 
 sub $0, %esp
 
-L3:
+L5:
 
-mov $L1, %ebx
+L6:
 
-push %ebx
+L4:
+
+mov $L2, %eax
+
+push %eax
 
 call print
 
 add $4, %esp
 
-jmp L2
+L1:
 
-L2:
+jmp L7
+
+L3:
+
+jmp L5
+
+L7:
 
  
 add $0, %esp
