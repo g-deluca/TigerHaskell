@@ -261,6 +261,14 @@ replaceTemps :: Instr -> Instr
 replaceTemps = replaceDst . replaceSrc
 
 -------------
+-- Minor optimization: removes silly moves like `mov %eax, %eax`
+removeSillyMoves :: [Instr] -> [Instr]
+removeSillyMoves instrs = filter notSillyMove instrs
+  where
+    notSillyMove (Move _ src dst) = src /= dst
+    notSillyMove _                = True
+
+-------------
 -- Main
 allocate :: [Instr] -> Frame -> Allocator [Instr]
 allocate instrs frame = do
@@ -270,7 +278,8 @@ allocate instrs frame = do
   assignColors
   st <- get
   let newInstr = applyColors instrs (colorsMap st)
-  return newInstr
+  let newInstrWithoutSillyMoves = removeSillyMoves newInstr
+  return newInstrWithoutSillyMoves
 
 loop :: Allocator ()
 loop = do
