@@ -136,7 +136,6 @@ munchExp (Eseq s e) = munchStm s >> munchExp e
 --       }
 --   trace ("ESTA CASO ES RARO!") return res
 munchExp (T.Mem e) = do
-  trace ("munchExp T.Mem: " ++  show e) (return ())
   te <- munchExp e
   res <- newTemp
   emit $

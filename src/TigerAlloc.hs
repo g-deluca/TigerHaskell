@@ -29,13 +29,14 @@ instance Show Worklists where
 
 data AllocState =
   AllocState
-    { igraph    :: InterferenceGraph
-    , worklists :: Worklists
-    , okColors  :: S.Set Temp
+    { igraph       :: InterferenceGraph
+    , worklists    :: Worklists
+    , okColors     :: S.Set Temp
+    , spilledNodes :: S.Set Temp
     -- Me llevo el stack de nodos con el grafo correspondiente a ese momento para poder "restaurarlo"
-    , stack     :: [(Temp, InterferenceGraph)]
+    , stack        :: [(Temp, InterferenceGraph)]
     -- Mapa de colores (coloredNodes = keys colorsMap)
-    , colorsMap :: M.Map Temp Temp
+    , colorsMap    :: M.Map Temp Temp
     }
 
 type ColorsMap = M.Map Temp Temp
@@ -53,6 +54,7 @@ initialState =
     , igraph = IGraph S.empty S.empty
     , stack = []
     , okColors = allColors
+    , spilledNodes = S.empty
     , colorsMap = initColorsMap
     }
 
@@ -165,14 +167,39 @@ assignColors = do
           notOkColors =
             S.map (\adjTemp -> actualColorsMap M.! adjTemp) adjListFiltered
           okColors = allColors `S.difference` notOkColors
-      put $
-        st
-          { colorsMap = M.insert t (head $ S.elems okColors) actualColorsMap
-          , stack = newStack
-          , igraph = ig
-          }
-      -- Súper imperativo: quedó la recursión en un elemento que está en el estado (stack)
-      assignColors
+      if okColors == S.empty
+        then do
+          let oldSpilled = spilledNodes st
+          put $
+            st
+              { spilledNodes = S.insert t oldSpilled
+              , stack = newStack
+              , igraph = ig
+              }
+        else do
+          put $
+            st
+              { colorsMap = M.insert t (head $ S.elems okColors) actualColorsMap
+              , stack = newStack
+              , igraph = ig
+              }
+          -- Súper imperativo: quedó la recursión en un elemento que está en el estado (stack)
+          assignColors
+
+-------------
+-- Reescribir el programa
+rewriteProgram :: [Instr] -> Frame -> Allocator ([Instr], Frame)
+rewriteProgram instrs frame = do
+  st <- get
+  let spilled = S.elems $ spilledNodes st
+  error $ "Work in progress"
+
+rewriteOneTemp :: Temp -> [Instr] -> Frame -> Allocator ([Instr], Frame)
+rewriteOneTemp _ [] oldFrame = do
+  let newFrame = oldFrame {actualReg = actualReg oldFrame + 1}
+  return ([], newFrame)
+rewriteOneTemp t (instr@(Oper _ src dst _):instrs) frame = error $ "Work in progress"
+rewriteOneTemp _ _ _ = error $ "Work in progress"
 
 -- Una vez que tenemos el mapa de colores construidos tenemos que reemplazar los
 -- temps que aparecen en las Instr por los colores (aka registros de la máquina).
@@ -277,9 +304,14 @@ allocate instrs frame = do
   loop
   assignColors
   st <- get
-  let newInstr = applyColors instrs (colorsMap st)
-  let newInstrWithoutSillyMoves = removeSillyMoves newInstr
-  return newInstrWithoutSillyMoves
+  if spilledNodes st == S.empty
+    then do
+      let newInstr = applyColors instrs (colorsMap st)
+      let newInstrWithoutSillyMoves = removeSillyMoves newInstr
+      return newInstrWithoutSillyMoves
+    else do
+      (newInstr, newFrame) <- rewriteProgram instrs frame
+      allocate newInstr newFrame
 
 loop :: Allocator ()
 loop = do
