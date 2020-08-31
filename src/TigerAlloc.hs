@@ -192,14 +192,82 @@ rewriteProgram :: [Instr] -> Frame -> Allocator ([Instr], Frame)
 rewriteProgram instrs frame = do
   st <- get
   let spilled = S.elems $ spilledNodes st
-  error $ "Work in progress"
+  rewriteAllTemps spilled instrs frame
+
+-- Custom foldM for better understanding
+rewriteAllTemps :: [Temp] -> [Instr] -> Frame -> Allocator ([Instr], Frame)
+rewriteAllTemps [] instrs frame = return (instrs, frame)
+rewriteAllTemps (t:temps) instrs frame = do
+  (newInstrs, newFrame) <- rewriteOneTemp t instrs frame
+  rewriteAllTemps temps newInstrs newFrame
 
 rewriteOneTemp :: Temp -> [Instr] -> Frame -> Allocator ([Instr], Frame)
 rewriteOneTemp _ [] oldFrame = do
   let newFrame = oldFrame {actualReg = actualReg oldFrame + 1}
   return ([], newFrame)
-rewriteOneTemp t (instr@(Oper _ src dst _):instrs) frame = error $ "Work in progress"
-rewriteOneTemp _ _ _ = error $ "Work in progress"
+rewriteOneTemp t (instr@(Oper _ src dst _):instrs) frame = do
+  let def = elem t dst
+      use = elem t src
+  (newInstrs, newFrame) <- rewriteOneTemp t instrs frame
+  if def
+    then do
+      freshTemp <- newTemp
+      -- Acá hay mucho pattern matching que damos por sentado:
+      -- - Sabemos que podemos usar "Just" pq estamos adentro de def
+      let Just tIndexOnDst = L.elemIndex t dst
+          -- Y sabemos que podemos "tirar" un elemento de la segunda mitad por
+          -- el índice que le pasamos a splitAt
+          (initNewDst, _:tailNewDst) = splitAt tIndexOnDst dst
+          newDst = initNewDst ++ [freshTemp] ++ tailNewDst
+      return
+        ([instr {odst = newDst}] ++ [(push freshTemp)] ++ newInstrs, newFrame)
+    else if use
+           then do
+             freshTemp <- newTemp
+             let Just tIndexOnSrc = L.elemIndex t src
+                 (initNewSrc, _:tailNewSrc) = splitAt tIndexOnSrc src
+                 newSrc = initNewSrc ++ [freshTemp] ++ tailNewSrc
+             return
+               ( [(retrieve freshTemp newFrame)] ++
+                 [instr {osrc = newSrc}] ++ newInstrs
+               , newFrame)
+           else return (instr : newInstrs, newFrame)
+rewriteOneTemp t (instr@(Move _ src dst):instrs) frame = do
+  let def = t == dst
+      use = t == src
+  (newInstrs, newFrame) <- rewriteOneTemp t instrs frame
+  if def
+    then do
+      freshTemp <- newTemp
+      return
+        ( [instr {mdst = freshTemp}] ++ [(push freshTemp)] ++ newInstrs
+        , newFrame)
+    else if use
+           then do
+             freshTemp <- newTemp
+             return
+               ( [(retrieve freshTemp newFrame)] ++
+                 [instr {msrc = freshTemp}] ++ newInstrs
+               , newFrame)
+           else return (instr : newInstrs, newFrame)
+rewriteOneTemp t (label:instrs) frame = do
+  (newInstrs, newFrame) <- rewriteOneTemp t instrs frame
+  return (label : newInstrs, newFrame)
+
+push :: Temp -> Instr
+push t = Oper {oassem = "push s0\n", osrc = [t], odst = [sp], ojump = Nothing}
+
+retrieve :: Temp -> Frame -> Instr
+retrieve t frame =
+  let offset =
+        TigerFrame.wSz *
+        (actualLocal frame + actualReg frame + TigerFrame.localsGap)
+   in Oper
+        { oassem = "mov -" ++ show offset ++ "(s0), d0\n"
+        , osrc = [fp]
+        , odst = [t, sp]
+        , ojump = Nothing
+        }
 
 -- Una vez que tenemos el mapa de colores construidos tenemos que reemplazar los
 -- temps que aparecen en las Instr por los colores (aka registros de la máquina).
@@ -311,6 +379,8 @@ allocate instrs frame = do
       return newInstrWithoutSillyMoves
     else do
       (newInstr, newFrame) <- rewriteProgram instrs frame
+      -- Ahora que tenemos el nuevo programa, empezamos todo de vuelta
+      put initialState
       allocate newInstr newFrame
 
 loop :: Allocator ()
