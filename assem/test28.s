@@ -1,7 +1,4 @@
 .data
-L2:
-.long 15
-.string "got out of loop"
 
 .text
 .globl _tigermain
@@ -26,51 +23,29 @@ push %ebp
 
 sub $0, %esp
 
-L11:
+L5:
 
-mov $0, %eax
+mov $7, %eax
 
-mov $0, %ebx
+mov $10, %eax
 
-mov $0, %ebx
+mov $-20, %edx
 
-mov %ebx, %ecx
+mov %ebp, %ecx
 
-mov $100, %ebx
+add %edx, %ecx
 
-L7:
-
-cmp %ebx, %ecx
-
-jle L8
-
-jmp L3
-
-L3:
-
-push %eax
+mov %eax, (%ecx)
 
 push %ebp
 
 call g
 
-add $8, %esp
+add $4, %esp
 
-jmp L10
+jmp L4
 
-L8:
-
-mov $1, %edi
-
-add %edi, %eax
-
-mov $1, %edi
-
-add %edi, %ecx
-
-jmp L7
-
-L10:
+L4:
 
  
 add $0, %esp
@@ -111,27 +86,25 @@ push %ebp
 
 sub $0, %esp
 
-L13:
+L7:
 
-mov $L2, %eax
-
-push %eax
-
-call print
-
-add $4, %esp
-
-mov $12, %ecx
+mov $8, %ecx
 
 mov %ebp, %eax
 
 add %ecx, %eax
 
-mov (%eax), %eax
+mov (%eax), %ecx
 
-jmp L12
+mov $-20, %eax
 
-L12:
+add %eax, %ecx
+
+mov (%ecx), %eax
+
+jmp L6
+
+L6:
 
  
 add $0, %esp

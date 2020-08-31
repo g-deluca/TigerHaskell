@@ -1,0 +1,9 @@
+/* variable escapes correctly */
+let
+	var j : int :=7
+	var w : int :=10
+	function g () : int = 
+      w
+in
+ g ()
+end

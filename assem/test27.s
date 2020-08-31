@@ -82,7 +82,7 @@ push %ebx
 
 push %ebp
 
-sub $8, %esp
+sub $0, %esp
 
 L6:
 
@@ -99,7 +99,7 @@ jmp L5
 L5:
 
  
-add $8, %esp
+add $0, %esp
 
 pop %ebp
 

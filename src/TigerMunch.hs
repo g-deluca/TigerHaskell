@@ -27,10 +27,25 @@ class (Monad w, TLGenerator w) =>
 munchStm :: InstrEmitter w => Stm -> w ()
 munchStm (Seq s1 s2) = munchStm s1 >> munchStm s2
 munchStm (ExpS e) = void $ munchExp e
--- TODO: Agregar casos para optimizar (o nah xd)
 munchStm (T.Move (Temp t) e2) = do
   t2 <- munchExp e2
   emit $ A.Move {massem = "mov s0, d0\n", msrc = t2, mdst = t}
+munchStm (T.Move (Mem e1) e2) = do
+  t1 <- munchExp e1
+  t2 <- munchExp e2
+  emit $
+    A.Oper
+      {oassem = "mov s0, (s1)\n", osrc = [t2, t1], odst = [], ojump = Nothing}
+munchStm (T.Move (Name l) e2) = do
+  t2 <- munchExp e2
+  let label = makeStringL l
+  emit $
+    A.Oper
+      { oassem = "mov s0, " ++ label ++ "\n"
+      , osrc = [t2]
+      , odst = []
+      , ojump = Nothing
+      }
 munchStm (T.Move e1 e2) -- T.Move e1 e2 => e1 <- e2
  = do
   stm1 <- munchExp e1
@@ -112,29 +127,17 @@ munchExp (Eseq s e) = munchStm s >> munchExp e
 --       , ojump = Nothing
 --       }
 --   return res
--- -- TODO: ¿Por qué agarramos puntualmente el caso de "Plus" y no
--- -- el resto. Así está en el libro, ¿but why?
--- munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
---   res <- newTemp
---   te <- munchExp e
---   emit $
---     Oper
---       { oassem = "mov (s0, $" ++ show i ++ "), d0\n"
---       , osrc = [te]
---       , odst = [res]
---       , ojump = Nothing
---       }
---   return res
--- munchExp (T.Mem (T.Const i)) = do
---   res <- newTemp
---   emit $
---     Oper
---       { oassem = "mov $" ++ show i ++ ", d0\n"
---       , osrc = []
---       , odst = [res]
---       , ojump = Nothing
---       }
---   trace ("ESTA CASO ES RARO!") return res
+munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
+  res <- newTemp
+  te <- munchExp e
+  emit $
+    Oper
+      { oassem = "mov " ++ show i ++ "(s0), d0\n"
+      , osrc = [te]
+      , odst = [res]
+      , ojump = Nothing
+      }
+  return res
 munchExp (T.Mem e) = do
   te <- munchExp e
   res <- newTemp
@@ -151,11 +154,7 @@ munchExp (T.Binop T.Plus el er) = do
   -- en d0 = (d0) + (s0)
   emit $
     Oper
-      { oassem = "add s0, d0\n"
-      , osrc = [tr, res]
-      , odst = [res]
-      , ojump = Nothing
-      }
+      {oassem = "add s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.Minus el er) = do
   tl <- munchExp el
@@ -164,11 +163,7 @@ munchExp (T.Binop T.Minus el er) = do
   emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "sub s0, d0\n"
-      , osrc = [tr, res]
-      , odst = [res]
-      , ojump = Nothing
-      }
+      {oassem = "sub s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.Mul el er) = do
   tl <- munchExp el
@@ -207,11 +202,7 @@ munchExp (T.Binop T.And el er) = do
   emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "and s0, d0\n"
-      , osrc = [tr, res]
-      , odst = [res]
-      , ojump = Nothing
-      }
+      {oassem = "and s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
@@ -229,11 +220,7 @@ munchExp (T.Binop T.XOr el er) = do
   emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      { oassem = "xor s0, d0\n"
-      , osrc = [tr, res]
-      , odst = [res]
-      , ojump = Nothing
-      }
+      {oassem = "xor s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
   return res
 -- Esta es la parte callee (ya entre a la funcion que fue llamada, que hago antes y despues?)
 munchExp (T.Call (Name n) args)
@@ -261,7 +248,7 @@ munchExp (T.Call (Name n) args)
   -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
   -- The caller can assume that no other registers were modified by the subroutine.
   return eax
-munchExp _ = error "No implementado ni con planes de hacerlo"
+munchExp _ = error "No implementado"
 
 -- | Definimos la mónada que instanciaremos en Emitter. Le puse Mordisco
 -- | porque 'munch' significa masticar (: y me pareció oportuno
@@ -300,17 +287,15 @@ runMordisco stmts = do
 munchArgs :: InstrEmitter e => [Exp] -> e ()
 munchArgs [] = return ()
 munchArgs args = do
-      arg <- munchExp (last args)
-      emit $
-        Oper {oassem = "push s0\n", osrc = [arg], odst = [sp], ojump = Nothing}
-      munchArgs (init args)
+  arg <- munchExp (last args)
+  emit $ Oper {oassem = "push s0\n", osrc = [arg], odst = [sp], ojump = Nothing}
+  munchArgs (init args)
 
 -- Before calling a subroutine, the caller should save the contents of certain registers that are designated caller-saved.
 emitPushList :: InstrEmitter e => [Temp] -> e ()
 emitPushList [] = return ()
 emitPushList (reg:regs) = do
-  emit $
-    Oper {oassem = "push s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
+  emit $ Oper {oassem = "push s0\n", osrc = [reg], odst = [sp], ojump = Nothing}
   emitPushList regs
 
 emitPopList :: InstrEmitter e => [Temp] -> e ()

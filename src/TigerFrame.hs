@@ -79,14 +79,14 @@ fpPrev :: Int
 fpPrev = 0
 -- | Donde se encuentra el FP del nivel anterior (no necesariamente el llamante?)
 fpPrevLev :: Int
-fpPrevLev = 0
+fpPrevLev = 8 -- es 8 porque tenemos que saltar el ebp que pusheamos y luego tenemos el slink
 
 -- | Esto es un offset previo a al lugar donde se encuentra el lugar de las variables
 -- o de los argumentos.
 argsGap, localsGap :: Int
 -- Tenemos siempre el push %ebp, y tenemos que saltar el static-link
 argsGap = 3*wSz
-localsGap = wSz*7
+localsGap = 5*wSz
 
 -- | Dan inicio a los contadores de argumentos, variables y registros usados.
 -- Ver |defaultFrame|
@@ -252,7 +252,7 @@ procEntryExit2 _fr instr =
 -- Esta cosa es el Pre y Post de una llamada a funcion (callee)
 procEntryExit3 :: ([Instr], Frame) -> [Instr]
 procEntryExit3 (body, frame) =
-    let frameOffset = wSz * ((actualLocal frame) + (actualStackArg frame))
+    let frameOffset = wSz * (actualLocal frame)
     in
     [   Oper {oassem = ".globl " ++ (unpack $ name frame) ++ "\n", osrc = [], odst = [], ojump=Nothing},
         Oper {oassem = ".type " ++ (unpack $ name frame) ++ ", @function" ++ "\n", osrc = [], odst = [], ojump=Nothing},
