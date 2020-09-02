@@ -261,7 +261,7 @@ retrieve :: Temp -> Frame -> Instr
 retrieve t frame =
   let offset =
         TigerFrame.wSz *
-        (actualLocal frame + actualReg frame + TigerFrame.localsGap)
+        (actualLocal frame + actualReg frame) + TigerFrame.localsGap
    in Oper
         { oassem = "mov -" ++ show offset ++ "(s0), d0\n"
         , osrc = [fp]

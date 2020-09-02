@@ -291,13 +291,9 @@ instance (MemM w) => IrGen w where
     -- fieldVar :: BExp -> Int -> w BExp
     fieldVar var i = do
       evar <- unEx var
+      let offset = i * wSz
       return $ Ex $
-          -- Eseq
-          --   -- TODO: Preguntar/revisar
-          --     (seq  [Move (Temp tvar) evar
-          --           ,Move (Temp ti) (Const i)
-          --           ,ExpS $ externalCall "_checkNil" [Temp tvar]])
-              (Mem $ Binop Plus evar (Binop Mul (Const i) (Const wSz)))
+        Mem (Binop Plus evar (Const offset))
     -- subscriptVar :: BExp -> BExp -> w BExp
     subscriptVar var ind = do
         evar <- unEx var

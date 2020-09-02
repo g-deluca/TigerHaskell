@@ -116,17 +116,17 @@ munchExp (Name l) = do
   return r
 munchExp (Temp t) = return t
 munchExp (Eseq s e) = munchStm s >> munchExp e
--- munchExp (T.Mem (T.Binop T.Plus e (T.Const i))) = do
---   res <- newTemp
---   te <- munchExp e
---   emit $
---     Oper
---       { oassem = "mov (s0, $" ++ show i ++ "), d0\n" -- mov (s0, $i), d0 => d0 = Mem[s0 + $i]
---       , osrc = [te]
---       , odst = [res]
---       , ojump = Nothing
---       }
---   return res
+munchExp (T.Mem (T.Binop T.Plus e (T.Const i))) = do
+  res <- newTemp
+  te <- munchExp e
+  emit $
+    Oper
+      { oassem = "mov " ++ show i ++ "(s0), d0\n"
+      , osrc = [te]
+      , odst = [res]
+      , ojump = Nothing
+      }
+  return res
 munchExp (T.Mem (T.Binop T.Plus (T.Const i) e)) = do
   res <- newTemp
   te <- munchExp e
@@ -148,45 +148,38 @@ munchExp (T.Mem e) = do
 munchExp (T.Binop T.Plus el er) = do
   tl <- munchExp el
   tr <- munchExp er
-  res <- newTemp
-  -- en d0 pongo el valor de s0, res = tl
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   -- en d0 = (d0) + (s0)
   emit $
     Oper
-      {oassem = "add s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
-  return res
+      {oassem = "add s0, d0\n", osrc = [tl,tr], odst = [tr], ojump = Nothing}
+  return tr
 munchExp (T.Binop T.Minus el er) = do
   tl <- munchExp el
   tr <- munchExp er
-  res <- newTemp
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "sub s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
-  return res
+      {oassem = "sub s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
+  return tr
 munchExp (T.Binop T.Mul el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
       { oassem = "imul s0, d0\n"
-      , osrc = [tr, res]
-      , odst = [res]
+      , osrc = [tl, tr]
+      , odst = [tr]
       , ojump = Nothing
       }
-  return res
+  return tr
 munchExp (T.Binop T.Div el er)
   -- idivq divisor --> (edx:eax) / divisor => eax resultado, edx resto
  = do
   tl <- munchExp el
   tr <- munchExp er
-  -- pongo 0's en eax porque no me interesa dividir en 128bits
   emit $
-    Oper {oassem = "mov $0, d0\n", osrc = [], odst = [eax], ojump = Nothing}
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = edx}
+    Oper {oassem = "mov $0, d0\n", osrc = [], odst = [edx], ojump = Nothing}
+  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = eax}
   emit $
     Oper
       { oassem = "idiv s0\n"
@@ -198,30 +191,24 @@ munchExp (T.Binop T.Div el er)
 munchExp (T.Binop T.And el er) = do
   tl <- munchExp el
   tr <- munchExp er
-  res <- newTemp
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "and s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
-  return res
+      {oassem = "and s0, d0\n", osrc = [tl, tr], odst = [tl], ojump = Nothing}
+  return tl
 munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
   tr <- munchExp er
-  res <- newTemp
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "or s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
-  return res
+      {oassem = "or s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
+  return tr
 munchExp (T.Binop T.XOr el er) = do
   tl <- munchExp el
   tr <- munchExp er
-  res <- newTemp
-  emit $ A.Move {massem = "mov s0, d0\n", msrc = tl, mdst = res}
   emit $
     Oper
-      {oassem = "xor s0, d0\n", osrc = [tr, res], odst = [res], ojump = Nothing}
-  return res
+      {oassem = "xor s0, d0\n", osrc = [tl, tr], odst = [tl], ojump = Nothing}
+  return tl
 -- Esta es la parte callee (ya entre a la funcion que fue llamada, que hago antes y despues?)
 munchExp (T.Call (Name n) args)
   -- Llamada a procedimiento -- devuelve algo
