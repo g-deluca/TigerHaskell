@@ -1,8 +1,8 @@
 .data
-L10:
+L9:
 .long 10
 .string "No es cero"
-L9:
+L8:
 .long 7
 .string "Es cero"
 
@@ -29,7 +29,7 @@ push %ebp
 
 sub $0, %esp
 
-L17:
+L16:
 
 mov $3, %eax
 
@@ -43,105 +43,47 @@ call _allocArray
 
 add $8, %esp
 
-mov $-20, %edx
+mov $-20, %ecx
 
-mov %ebp, %ecx
-
-add %edx, %ecx
+add %ebp, %ecx
 
 mov %eax, (%ecx)
 
-mov $42, %eax
+mov -20(%ebp), %eax
 
-mov $-24, %edx
+mov -20(%ebp), %edx
 
-mov %ebp, %ecx
+mov $0, %ecx
 
-add %edx, %ecx
-
-mov %eax, (%ecx)
-
-mov $-20, %ecx
-
-mov %ebp, %eax
-
-add %ecx, %eax
-
-mov (%eax), %eax
-
-mov $-20, %ecx
-
-mov %ebp, %eax
-
-add %ecx, %eax
-
-mov (%eax), %edx
-
-mov $0, %eax
-
-mov $4, %ecx
+mov $4, %eax
 
 imul %ecx, %eax
 
-mov %edx, %ecx
+add %edx, %eax
 
-add %eax, %ecx
-
-mov (%ecx), %ecx
+mov (%eax), %ecx
 
 mov $0, %eax
 
 cmp %eax, %ecx
 
-je L5
+je L4
 
-jmp L6
+jmp L5
 
-L6:
+L5:
 
 mov $0, %eax
 
-L7:
+L6:
 
 mov $0, %ecx
 
 cmp %ecx, %eax
 
-jne L11
+jne L10
 
-jmp L12
-
-L12:
-
-mov $L10, %eax
-
-push %eax
-
-call print
-
-add $4, %esp
-
-mov $0, %eax
-
-L13:
-
-mov $42, %eax
-
-push %eax
-
-push %ebp
-
-call g
-
-add $8, %esp
-
-jmp L16
-
-L5:
-
-mov $1, %eax
-
-jmp L7
+jmp L11
 
 L11:
 
@@ -155,9 +97,41 @@ add $4, %esp
 
 mov $0, %eax
 
-jmp L13
+L12:
 
-L16:
+mov $42, %eax
+
+push %eax
+
+push %ebp
+
+call g
+
+add $8, %esp
+
+jmp L15
+
+L4:
+
+mov $1, %eax
+
+jmp L6
+
+L10:
+
+mov $L8, %eax
+
+push %eax
+
+call print
+
+add $4, %esp
+
+mov $0, %eax
+
+jmp L12
+
+L15:
 
  
 add $0, %esp
@@ -198,59 +172,29 @@ push %ebp
 
 sub $0, %esp
 
-L19:
+L18:
 
-mov $8, %ecx
+mov 8(%ebp), %eax
 
-mov %ebp, %eax
+mov -20(%eax), %edx
 
-add %ecx, %eax
+mov $0, %ecx
 
-mov (%eax), %eax
-
-mov $-24, %ecx
-
-add %ecx, %eax
-
-mov (%eax), %eax
-
-push %eax
-
-mov $8, %ecx
-
-mov %ebp, %eax
-
-add %ecx, %eax
-
-mov (%eax), %eax
-
-mov $-20, %ecx
-
-add %ecx, %eax
-
-mov (%eax), %edx
-
-mov $0, %eax
-
-mov $4, %ecx
+mov $4, %eax
 
 imul %ecx, %eax
 
-mov %edx, %ecx
+add %edx, %eax
 
-add %eax, %ecx
+mov (%eax), %ecx
 
-mov (%ecx), %eax
+mov 12(%ebp), %eax
 
-mov -84(%ebp), %ecx
+add %ecx, %eax
 
-add %eax, %ecx
+jmp L17
 
-mov %ecx, %eax
-
-jmp L18
-
-L18:
+L17:
 
  
 add $0, %esp

@@ -1,4 +1,12 @@
 .data
+L10:
+.long 14
+.string "llegamos a 10
+"
+L5:
+.long 12
+.string "inside loop
+"
 L2:
 .long 15
 .string "got out of loop"
@@ -26,23 +34,21 @@ push %ebp
 
 sub $0, %esp
 
-L11:
+L17:
 
 mov $0, %eax
 
-mov $0, %ebx
+mov $1, %eax
 
-mov $0, %ebx
+mov %eax, %ebx
 
-mov %ebx, %ecx
+L13:
 
-mov $100, %ebx
+mov $10, %eax
 
-L7:
+cmp %eax, %ebx
 
-cmp %ebx, %ecx
-
-jle L8
+jle L14
 
 jmp L3
 
@@ -56,21 +62,69 @@ call g
 
 add $8, %esp
 
-jmp L10
+jmp L16
 
-L8:
+L14:
 
-mov $1, %edi
+mov $L5, %eax
 
-add %edi, %eax
+push %eax
 
-mov $1, %edi
+call print
 
-add %edi, %ecx
+add $4, %esp
+
+mov $10, %eax
+
+cmp %eax, %ebx
+
+je L6
 
 jmp L7
 
-L10:
+L7:
+
+mov $0, %eax
+
+L8:
+
+mov $0, %ecx
+
+cmp %ecx, %eax
+
+jne L12
+
+jmp L11
+
+L11:
+
+mov $1, %eax
+
+add %ebx, %eax
+
+mov %eax, %ebx
+
+jmp L13
+
+L6:
+
+mov $1, %eax
+
+jmp L8
+
+L12:
+
+mov $L10, %eax
+
+push %eax
+
+call print
+
+add $4, %esp
+
+jmp L11
+
+L16:
 
  
 add $0, %esp
@@ -111,7 +165,7 @@ push %ebp
 
 sub $0, %esp
 
-L13:
+L19:
 
 mov $L2, %eax
 
@@ -121,17 +175,11 @@ call print
 
 add $4, %esp
 
-mov $12, %ecx
+mov 12(%ebp), %eax
 
-mov %ebp, %eax
+jmp L18
 
-add %ecx, %eax
-
-mov (%eax), %eax
-
-jmp L12
-
-L12:
+L18:
 
  
 add $0, %esp

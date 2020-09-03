@@ -411,14 +411,11 @@ instance (MemM w) => IrGen w where
     -- forExp :: BExp -> BExp -> BExp -> BExp -> w BExp
     forExp lo hi var body = do
       -- | Asignamos el valor de lo a la variable var (valor inicial)
-      evar <- assignExp var lo
-      evar <- unEx evar
+      elo <- unEx lo
+      evar <- unEx var
       ehi <- unEx hi
       -- | Desempaquetamos el body como un statement
-      cbody <- unNx body
-      -- | Creamos los temporales para efectuar la comparación
-      tvar <- newTemp
-      thi  <- newTemp
+      sbody <- unNx body
       -- | Creamos los labels necesarios
       test <- newLabel
       body <- newLabel
@@ -426,13 +423,12 @@ instance (MemM w) => IrGen w where
       case lastM of
         Just done ->
             return $ Nx $ seq
-                [Move (Temp tvar) evar
-                ,Move (Temp thi) ehi
+                [Move evar elo
                 ,Label test
-                ,CJump LE (Temp tvar) (Temp thi) body done
+                ,CJump LE evar ehi body done
                 ,Label body
-                ,cbody
-                ,Move (Temp tvar) (Binop Plus (Temp tvar) (Const 1))
+                ,sbody
+                ,Move evar (Binop Plus evar (Const 1))
                 ,Jump (Name test) test
                 ,Label done]
         _ -> internal $ pack "no label in salida"
