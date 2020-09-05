@@ -298,13 +298,7 @@ instance (MemM w) => IrGen w where
     subscriptVar var ind = do
         evar <- unEx var
         eind <- unEx ind
-        return $ Ex $
-            -- Eseq
-            --     (seq    [Move (Temp tvar) evar
-            --             ,Move (Temp tind) eind
-            --             -- Cambiamos "_checkIndex" por "_checkIndexArray", is it ok?
-            --             ,ExpS $ externalCall "_checkIndexArray" [Temp tvar, Temp tind]])
-                (Mem $ Binop Plus evar (Binop Mul eind (Const wSz)))
+        return $ Ex $ Mem (Binop Plus evar (Binop Mul eind (Const wSz)))
     -- recordExp :: [(BExp,Int)]  -> w BExp
     recordExp flds = do
         let size = Const $ List.length flds

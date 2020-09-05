@@ -193,8 +193,8 @@ munchExp (T.Binop T.And el er) = do
   tr <- munchExp er
   emit $
     Oper
-      {oassem = "and s0, d0\n", osrc = [tl, tr], odst = [tl], ojump = Nothing}
-  return tl
+      {oassem = "and s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
+  return tr
 munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
   tr <- munchExp er
@@ -207,8 +207,8 @@ munchExp (T.Binop T.XOr el er) = do
   tr <- munchExp er
   emit $
     Oper
-      {oassem = "xor s0, d0\n", osrc = [tl, tr], odst = [tl], ojump = Nothing}
-  return tl
+      {oassem = "xor s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
+  return tr
 -- Esta es la parte callee (ya entre a la funcion que fue llamada, que hago antes y despues?)
 munchExp (T.Call (Name n) args)
   -- Llamada a procedimiento -- devuelve algo
