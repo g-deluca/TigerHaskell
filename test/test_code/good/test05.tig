@@ -1,0 +1,18 @@
+/* define valid mutually recursive procedures */
+let
+
+function print_saludo (d: int)=
+	if (d = 1) 
+		then (	print("hola, ");
+				print_saludo2(1))
+		else (	print("me tengo que ir\n");
+				print_saludo2(2))
+
+function print_saludo2(c : int) =
+	if (c = 1) 
+		then (print("como estas?\n");print_saludo(2))
+		else print("chau")
+
+in
+	print_saludo(1); 0
+end
