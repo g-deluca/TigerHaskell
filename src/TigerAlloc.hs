@@ -260,8 +260,8 @@ push t = Oper {oassem = "push s0\n", osrc = [t], odst = [sp], ojump = Nothing}
 retrieve :: Temp -> Frame -> Instr
 retrieve t frame =
   let offset =
-        TigerFrame.wSz *
-        (actualLocal frame + actualReg frame) + TigerFrame.localsGap
+        TigerFrame.wSz * (actualLocal frame + actualReg frame) +
+        TigerFrame.localsGap
    in Oper
         { oassem = "mov -" ++ show offset ++ "(s0), d0\n"
         , osrc = [fp]

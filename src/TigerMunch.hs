@@ -151,26 +151,22 @@ munchExp (T.Binop T.Plus el er) = do
   -- en d0 = (d0) + (s0)
   emit $
     Oper
-      {oassem = "add s0, d0\n", osrc = [tl,tr], odst = [tr], ojump = Nothing}
+      {oassem = "add s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
   return tr
 munchExp (T.Binop T.Minus el er) = do
   tl <- munchExp el
   tr <- munchExp er
   emit $
     Oper
-      {oassem = "sub s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
-  return tr
+      {oassem = "sub s0, d0\n", osrc = [tr, tl], odst = [tl], ojump = Nothing}
+  return tl
 munchExp (T.Binop T.Mul el er) = do
   tl <- munchExp el
   tr <- munchExp er
   res <- newTemp
   emit $
     Oper
-      { oassem = "imul s0, d0\n"
-      , osrc = [tl, tr]
-      , odst = [tr]
-      , ojump = Nothing
-      }
+      {oassem = "imul s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
   return tr
 munchExp (T.Binop T.Div el er)
   -- idivq divisor --> (edx:eax) / divisor => eax resultado, edx resto
@@ -199,8 +195,7 @@ munchExp (T.Binop T.Or el er) = do
   tl <- munchExp el
   tr <- munchExp er
   emit $
-    Oper
-      {oassem = "or s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
+    Oper {oassem = "or s0, d0\n", osrc = [tl, tr], odst = [tr], ojump = Nothing}
   return tr
 munchExp (T.Binop T.XOr el er) = do
   tl <- munchExp el
@@ -212,7 +207,6 @@ munchExp (T.Binop T.XOr el er) = do
 -- Esta es la parte callee (ya entre a la funcion que fue llamada, que hago antes y despues?)
 munchExp (T.Call (Name n) args)
   -- Llamada a procedimiento -- devuelve algo
-  -- TODO: Esto lo debería hacer el caller, si lo hago primero acá no hay problema?
  = do
   munchArgs args
   -- Llamamos a la función
@@ -232,8 +226,6 @@ munchExp (T.Call (Name n) args)
       , odst = [sp]
       , ojump = Nothing
       }
-  -- Restore the contents of caller-saved registers (EAX, ECX, EDX) by popping them off of the stack.
-  -- The caller can assume that no other registers were modified by the subroutine.
   return eax
 munchExp _ = error "No implementado"
 
@@ -248,7 +240,6 @@ instance InstrEmitter Mordisco where
         -- agregamos de cheto.
     put $ i : st
 
--- TODO: Dejar de poner nombres PAVOS
 -- morder :: InstrEmitter w => Stm -> w ()
 morder = munchStm
 

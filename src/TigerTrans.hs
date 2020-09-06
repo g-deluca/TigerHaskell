@@ -337,7 +337,6 @@ instance (MemM w) => IrGen w where
                 return $ Nx $
                    ExpS $ call args'
             IsFun -> do
-                res <- newTemp
                 return $ Ex $ call args'
     -- letExp :: [BExp] -> BExp -> w BExp
     letExp [] e = do
