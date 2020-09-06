@@ -219,7 +219,7 @@ allocArg fr escapa = do
 allocLocal :: (Monad w, TLGenerator w) => Frame -> Escapa -> w (Frame, Access)
 allocLocal fr Escapa =
   let actual = actualLocal fr
-      acc    = InFrame $ -(actual * wSz + localsGap) --TODO: revisar func exp. El stack crece abajo??
+      acc    = InFrame $ -(actual * wSz + localsGap)
   in  return (fr { locals = (locals fr) ++ [Escapa], actualLocal = actual + 1 }, acc)
 allocLocal fr NoEscapa = do
   s <- newTemp

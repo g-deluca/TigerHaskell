@@ -25,6 +25,10 @@ sub $0, %esp
 
 L5:
 
+push %ebx
+
+push %ecx
+
 mov $0, %eax
 
 push %eax
@@ -36,6 +40,10 @@ push %eax
 call _allocArray
 
 add $8, %esp
+
+pop %ebx
+
+pop %ecx
 
 jmp L4
 

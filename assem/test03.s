@@ -31,6 +31,10 @@ sub $0, %esp
 
 L8:
 
+push %ebx
+
+push %ecx
+
 mov $L2, %eax
 
 push %eax
@@ -47,13 +51,21 @@ call _allocRecord
 
 add $12, %esp
 
-mov $L5, %ecx
+pop %ebx
+
+pop %ecx
+
+mov $L5, %edi
 
 mov $4, %edx
 
 add %eax, %edx
 
-mov %ecx, (%edx)
+mov %edi, (%edx)
+
+push %ebx
+
+push %ecx
 
 mov 4(%eax), %eax
 
@@ -62,6 +74,10 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
 
 jmp L7
 

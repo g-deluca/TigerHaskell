@@ -41,6 +41,10 @@ sub $0, %esp
 
 L11:
 
+push %ebx
+
+push %ecx
+
 mov $L2, %eax
 
 push %eax
@@ -53,19 +57,27 @@ call _allocArray
 
 add $8, %esp
 
-mov %eax, %ebx
+pop %ebx
+
+pop %ecx
+
+mov %eax, %edi
 
 mov $L5, %eax
 
-mov $0, %edi
+mov $0, %esi
 
-mov $4, %ecx
+mov $4, %edx
 
-imul %edi, %ecx
+imul %esi, %edx
 
-add %ebx, %ecx
+add %edi, %edx
 
-mov %eax, (%ecx)
+mov %eax, (%edx)
+
+push %ebx
+
+push %ecx
 
 mov $L7, %eax
 
@@ -75,13 +87,21 @@ call print
 
 add $4, %esp
 
-mov $0, %ecx
+pop %ebx
+
+pop %ecx
+
+push %ebx
+
+push %ecx
+
+mov $0, %ebx
 
 mov $4, %eax
 
-imul %ecx, %eax
+imul %ebx, %eax
 
-add %ebx, %eax
+add %edi, %eax
 
 mov (%eax), %eax
 
@@ -90,6 +110,14 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
+
+push %ebx
+
+push %ecx
 
 mov $L8, %eax
 
@@ -99,6 +127,14 @@ call print
 
 add $4, %esp
 
+pop %ebx
+
+pop %ecx
+
+push %ebx
+
+push %ecx
+
 mov $L9, %eax
 
 push %eax
@@ -107,13 +143,21 @@ call print
 
 add $4, %esp
 
-mov $1, %ecx
+pop %ebx
+
+pop %ecx
+
+push %ebx
+
+push %ecx
+
+mov $1, %ebx
 
 mov $4, %eax
 
-imul %ecx, %eax
+imul %ebx, %eax
 
-add %ebx, %eax
+add %edi, %eax
 
 mov (%eax), %eax
 
@@ -122,6 +166,10 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
 
 jmp L10
 

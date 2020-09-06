@@ -23,19 +23,23 @@ push %ebp
 
 sub $0, %esp
 
-L5:
+L4:
 
 mov $7, %eax
 
 mov $10, %eax
 
-mov $-20, %edx
+mov %eax, %edi
 
-mov %ebp, %ecx
+mov $-20, %eax
 
-add %edx, %ecx
+add %ebp, %eax
 
-mov %eax, (%ecx)
+mov %edi, (%eax)
+
+push %ebx
+
+push %ecx
 
 push %ebp
 
@@ -43,9 +47,13 @@ call g
 
 add $4, %esp
 
-jmp L4
+pop %ebx
 
-L4:
+pop %ecx
+
+jmp L3
+
+L3:
 
  
 add $0, %esp
@@ -86,25 +94,15 @@ push %ebp
 
 sub $0, %esp
 
-L7:
-
-mov $8, %ecx
-
-mov %ebp, %eax
-
-add %ecx, %eax
-
-mov (%eax), %ecx
-
-mov $-20, %eax
-
-add %eax, %ecx
-
-mov (%ecx), %eax
-
-jmp L6
-
 L6:
+
+mov 8(%ebp), %eax
+
+mov -20(%eax), %eax
+
+jmp L5
+
+L5:
 
  
 add $0, %esp

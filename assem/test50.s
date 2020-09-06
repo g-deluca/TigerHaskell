@@ -32,6 +32,10 @@ L6:
 
 L4:
 
+push %ebx
+
+push %ecx
+
 mov $L2, %eax
 
 push %eax
@@ -39,6 +43,10 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
 
 L1:
 

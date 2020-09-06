@@ -42,6 +42,10 @@ sub $0, %esp
 
 L7:
 
+push %ebx
+
+push %ecx
+
 mov $L5, %eax
 
 push %eax
@@ -55,6 +59,10 @@ push %ebp
 call do_nothing1
 
 add $12, %esp
+
+pop %ebx
+
+pop %ecx
 
 jmp L6
 
@@ -101,6 +109,10 @@ sub $0, %esp
 
 L9:
 
+push %ebx
+
+push %ecx
+
 mov $L2, %eax
 
 push %eax
@@ -108,6 +120,14 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
+
+push %ebx
+
+push %ecx
 
 mov $L3, %eax
 
@@ -122,6 +142,10 @@ push %ebp
 call do_nothing1
 
 add $12, %esp
+
+pop %ebx
+
+pop %ecx
 
 mov $L4, %eax
 
@@ -170,6 +194,10 @@ sub $0, %esp
 
 L11:
 
+push %ebx
+
+push %ecx
+
 mov $L1, %eax
 
 push %eax
@@ -177,6 +205,14 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
+
+push %ebx
+
+push %ecx
 
 mov 12(%ebp), %ebx
 
@@ -191,6 +227,10 @@ push %ebp
 call do_nothing2
 
 add $8, %esp
+
+pop %ebx
+
+pop %ecx
 
 mov $0, %eax
 

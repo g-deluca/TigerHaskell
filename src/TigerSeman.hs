@@ -680,9 +680,7 @@ transExp(ForExp nv mb lo hi bo p) = do
   preWhileforExp
   init_val <- allocLocal mb
   lvl <- getActualLevel
-  init_var <- simpleVar init_val lvl -- TODO: Revisar si va actual level o el de la variable
-  -- Acá deberíamos chequear que lo < hi. Pero para eso necesitamos el código intermedio.
-  -- TODO: En la próxima etapa ^. (Ver Tiger Language Reference Manual)
+  init_var <- simpleVar init_val lvl 
   -- Chequeamos que el cuerpo del for no produzca valor. (Ver Tiger Language Reference Manual)
   (bexp_bo , tipo_bo) <- insertVRO nv init_val lvl $ transExp bo
   unless (equivTipo tipo_bo TUnit)

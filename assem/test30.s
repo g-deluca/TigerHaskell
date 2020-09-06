@@ -25,6 +25,10 @@ sub $0, %esp
 
 L5:
 
+push %ebx
+
+push %ecx
+
 mov $0, %eax
 
 push %eax
@@ -37,15 +41,19 @@ call _allocArray
 
 add $8, %esp
 
-mov %eax, %edx
+pop %ebx
 
-mov $2, %ecx
+pop %ecx
+
+mov %eax, %ecx
+
+mov $2, %ebx
 
 mov $4, %eax
 
-imul %ecx, %eax
+imul %ebx, %eax
 
-add %edx, %eax
+add %ecx, %eax
 
 mov (%eax), %eax
 

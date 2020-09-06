@@ -277,8 +277,6 @@ instance (MemM w) => IrGen w where
                   IsProc -> unNx bd
                   IsFun  -> Move (Temp rv) <$> unEx bd
         procEntryExit lvl (Nx body)
-        -- TODO: Pregunar qué onda esto. Devolvemos 0 porque no hay que generar
-        -- código intermedio, no?
         return $ Ex $ Const 0
     -- simpleVar :: Access -> Int -> w BExp
     simpleVar acc level = do
@@ -318,16 +316,14 @@ instance (MemM w) => IrGen w where
           -- Obtenemos el nivel de "name" (callee)
           calleeLevel   = getNlvl lvl
           -- Como llamar a la función
-          call  = case external of
-                       Runtime -> externalCall $ unpack name -- TODO: What's the difference with Call (Name name) ???
-                       Propia  -> Call (Name name)
+          call  = Call (Name name)
           -- Calculamos el static link
           -- "So on each procedure call or variable access, a chain of zero
           -- or more fetches is required; the length of the chain is just
           -- the difference in static nesting depth between the two functions involved."
           -- Pag. 134
           slink = if calleeLevel > callerLevel
-                  then Temp fp --  TODO: ¿Está bien esto? ¿P.error "Error en static link"?
+                  then Temp fp
                   else F.auxexp (callerLevel - calleeLevel)
           args' = case external of
             Runtime -> args
@@ -521,7 +517,6 @@ instance (MemM w) => IrGen w where
 
       ret <- newTemp
 
-      -- TODO: Esta bien devolver Ex? Deberíamos devolver Cx? Diferencia?
       return $ Ex $ (Eseq (seq
         [CJump (abs2Tree op) ele ere t f
         , Label t
@@ -534,7 +529,6 @@ instance (MemM w) => IrGen w where
         (Temp ret))
 
     -- binOpStrExp :: BExp -> Abs.Oper -> BExp -> w BExp
-    -- TODO: Se puede comparar un string con otros operadores que no sean estos?
     binOpStrExp strl op strr = do
       estrl <- unEx strl
       estrr <- unEx strr

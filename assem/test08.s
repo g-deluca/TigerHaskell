@@ -33,11 +33,11 @@ L14:
 
 mov $10, %eax
 
-mov %eax, %ecx
+mov %eax, %edi
 
 mov $20, %eax
 
-cmp %eax, %ecx
+cmp %eax, %edi
 
 jg L3
 
@@ -49,15 +49,19 @@ mov $0, %eax
 
 L5:
 
-mov $0, %ecx
+mov $0, %edi
 
-cmp %ecx, %eax
+cmp %edi, %eax
 
 jne L9
 
 jmp L10
 
 L10:
+
+push %ebx
+
+push %ecx
 
 mov $L8, %eax
 
@@ -66,6 +70,10 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
 
 mov $0, %eax
 
@@ -81,6 +89,10 @@ jmp L5
 
 L9:
 
+push %ebx
+
+push %ecx
+
 mov $L7, %eax
 
 push %eax
@@ -88,6 +100,10 @@ push %eax
 call print
 
 add $4, %esp
+
+pop %ebx
+
+pop %ecx
 
 mov $0, %eax
 
