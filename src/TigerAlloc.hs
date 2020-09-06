@@ -150,7 +150,6 @@ selectPotentialSpill = do
 -------------
 -- Asignar colores Acá vamos construyendo el colorsMap, asignandole un registro
 -- real a cada temp.
--- TODO: Modificar cuando se agregue spilling coalescing (pag. 249)
 assignColors :: Allocator ()
 assignColors = do
   st <- get

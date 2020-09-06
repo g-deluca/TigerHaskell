@@ -208,6 +208,7 @@ munchExp (T.Binop T.XOr el er) = do
 munchExp (T.Call (Name n) args)
   -- Llamada a procedimiento -- devuelve algo
  = do
+  emitPushList [ebx, ecx]
   munchArgs args
   -- Llamamos a la función
   emit $
@@ -226,6 +227,7 @@ munchExp (T.Call (Name n) args)
       , odst = [sp]
       , ojump = Nothing
       }
+  emitPopList [ebx, ecx]
   return eax
 munchExp _ = error "No implementado"
 

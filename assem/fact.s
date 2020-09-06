@@ -25,9 +25,9 @@ sub $0, %esp
 
 L10:
 
-push %ecx
-
 push %ebx
+
+push %ecx
 
 mov $5, %eax
 
@@ -39,9 +39,9 @@ call fact
 
 add $8, %esp
 
-pop %ecx
-
 pop %ebx
+
+pop %ecx
 
 jmp L9
 
@@ -118,9 +118,9 @@ mov 12(%ebp), %eax
 
 mov %eax, %edi
 
-push %ecx
-
 push %ebx
+
+push %ecx
 
 mov 12(%ebp), %ebx
 
@@ -136,9 +136,9 @@ call fact
 
 add $8, %esp
 
-pop %ecx
-
 pop %ebx
+
+pop %ecx
 
 imul %edi, %eax
 
